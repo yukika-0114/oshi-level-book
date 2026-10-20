@@ -286,12 +286,12 @@ function pointsHTML(u) {
   const approx = hasPoints(u) ? '' : '最大 ';
   let eta;
   if (toGoal(u) <= 0) eta = '<span class="eta">ポイント到達済み</span>';
-  else if (!hasGrowth(u)) eta = '<span class="eta muted">Lv.50 達成予定：増加ペース未設定</span>';
+  else if (!hasGrowth(u)) eta = '<span class="eta muted">達成予定：増加ペース未設定</span>';
   else {
     const date = predict(u, [goal]).get(goal);
     eta = date
-      ? `<span class="eta">Lv.50 達成予定 ${fmtYMD(date)}（${fmtAfter(date)}）</span>`
-      : `<span class="eta muted">Lv.50 達成予定：${hasGains(u) ? '100年以上先' : '追加予定だけでは届きません'}</span>`;
+      ? `<span class="eta">達成予定 ${fmtYMD(date)}（${fmtAfter(date)}）</span>`
+      : `<span class="eta muted">達成予定：${hasGains(u) ? '100年以上先' : '追加予定だけでは届きません'}</span>`;
   }
   return `<div class="pts"><span>${hasPoints(u) ? num(u.points) : '-'} / ${num(goal)}pt</span>
     <span>Lv.50まで <b>${approx}${num(toGoal(u))}pt</b></span>${eta}</div>`;
@@ -490,7 +490,11 @@ new MutationObserver(() => {
   requestAnimationFrame(() => { fitQueued = false; fitOneLine(modalForm); });
 }).observe(modalForm, { childList: true, subtree: true });
 window.addEventListener('resize', () => fitOneLine(modalForm));
-modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
+// モーダルの外側は「上の空いている部分」をタップしたときだけ閉じる（横の誤タップでは閉じない）
+modal.addEventListener('click', (e) => {
+  if (e.target !== modal) return;
+  if (e.clientY < modal.getBoundingClientRect().top) modal.close();
+});
 
 // アプリ内の確認ダイアログ（ブラウザ標準の confirm の代わり）
 const TRASH_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';

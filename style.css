@@ -166,7 +166,7 @@ textarea.input { min-height: 72px; resize: vertical; }
 .down { color: var(--pink); font-weight: 700; }
 
 .modal {
-  width: min(560px, 100vw); max-height: 92dvh; margin: auto auto 0; padding: 0;
+  width: min(560px, 100vw); max-width: 100vw; max-height: 92dvh; margin: auto auto 0; padding: 0;
   border: 1px solid var(--border); border-radius: 18px 18px 0 0;
   background: var(--surface); color: var(--text);
 }

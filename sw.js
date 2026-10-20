@@ -1,4 +1,4 @@
-﻿const CACHE = 'ttlv-v23';
+﻿const CACHE = 'ttlv-v24';
 const ASSETS = [
   './',
   './index.html',
