@@ -9,6 +9,9 @@
   --pink: #fe2c55;
   --radius: 14px;
   --safe-b: env(safe-area-inset-bottom, 0px);
+  /* ホームバーの余白をそのまま足すと下のタブが高くなりすぎるので、少し重ねて詰める */
+  --tab-pad-b: max(calc(env(safe-area-inset-bottom, 0px) - 16px), 6px);
+  --tab-h: calc(42px + var(--tab-pad-b));
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -35,17 +38,17 @@ button, input, select, textarea { font: inherit; color: inherit; }
   border-radius: 50%; background: var(--cyan); box-shadow: 3px 0 0 var(--pink); vertical-align: middle;
 }
 
-.view { max-width: 760px; margin: 0 auto; padding: 16px 16px calc(96px + var(--safe-b)); }
+.view { max-width: 760px; margin: 0 auto; padding: 16px 16px calc(var(--tab-h) + 76px); }
 
 .tabbar {
   position: fixed; left: 0; right: 0; bottom: 0; z-index: 10;
   display: grid; grid-template-columns: repeat(4, 1fr);
   background: rgba(16, 16, 22, .96); backdrop-filter: blur(10px);
   border-top: 1px solid var(--border);
-  padding-bottom: var(--safe-b);
+  padding-bottom: var(--tab-pad-b);
 }
 .tabbar button {
-  position: relative; background: none; border: 0; padding: 14px 0; color: var(--muted);
+  position: relative; background: none; border: 0; height: 42px; padding: 0; color: var(--muted);
   font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .tabbar button.active { color: var(--text); }
@@ -55,7 +58,7 @@ button, input, select, textarea { font: inherit; color: inherit; }
 }
 
 .fab {
-  position: fixed; right: 18px; bottom: calc(68px + var(--safe-b)); z-index: 11;
+  position: fixed; right: 18px; bottom: calc(var(--tab-h) + 14px); z-index: 11;
   width: 56px; height: 56px; border-radius: 50%; border: 0; cursor: pointer;
   font-size: 28px; color: #fff;
   background: linear-gradient(135deg, var(--pink), #ff5f7e);
@@ -180,7 +183,7 @@ textarea.input { min-height: 72px; resize: vertical; }
 .cat-item .grow { flex: 1; }
 
 .toast {
-  position: fixed; left: 50%; bottom: calc(150px + var(--safe-b)); transform: translateX(-50%) translateY(20px);
+  position: fixed; left: 50%; bottom: calc(var(--tab-h) + 86px); transform: translateX(-50%) translateY(20px);
   background: #fff; color: #000; padding: 10px 16px; border-radius: 999px; font-size: 13px; font-weight: 600;
   opacity: 0; pointer-events: none; transition: .25s; z-index: 50; max-width: calc(100vw - 32px);
 }
