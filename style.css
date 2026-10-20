@@ -23,6 +23,7 @@ body {
   min-height: 100dvh;
 }
 button, input, select, textarea { font: inherit; color: inherit; }
+input, select, textarea { font-size: 16px; }
 
 .topbar {
   position: sticky; top: 0; z-index: 10;
@@ -88,6 +89,10 @@ button, input, select, textarea { font: inherit; color: inherit; }
 
 .toolbar { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; }
 .toolbar .grow { flex: 1 1 180px; min-width: 0; }
+/* 検索と並べ替えは常に横並び */
+.toolbar:has(#search) { flex-wrap: nowrap; }
+.toolbar #search { flex: 1 1 0; min-width: 0; }
+.sort-select { flex: 0 1 auto; width: auto; max-width: 46%; text-overflow: ellipsis; }
 .input, select.input, textarea.input {
   width: 100%; padding: 10px 12px; border-radius: 10px;
   background: var(--surface2); border: 1px solid var(--border); outline: none;
@@ -243,7 +248,8 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin
 }
 
 /* 達成予定 */
-.stage-eta { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 12px; }
+.stage-eta { display: flex; justify-content: space-between; gap: 8px; margin-top: 4px; font-size: 12px; white-space: nowrap; overflow: hidden; }
+.stage-eta > span { flex: none; }
 .stage-eta b { color: var(--text); }
 .eta-after { color: var(--cyan); font-weight: 700; }
 .pts .eta { color: var(--cyan); width: 100%; }
@@ -397,3 +403,11 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin
 .stage-head b.lv-only { margin-left: 0; }
 .stat-row { display: flex; align-items: baseline; justify-content: space-between; gap: 6px; margin-top: 2px; }
 .stat-row .unit { font-size: 13px; color: var(--muted); }
+
+/* 長押しによる文字選択・メニューを出さない（入力欄は除く） */
+body { -webkit-user-select: none; user-select: none; -webkit-touch-callout: none; }
+input, textarea { -webkit-user-select: text; user-select: text; }
+#modalForm:focus { outline: none; }
+.plan-date { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
+.plan-amount { flex: none; }
+.plan-date .small { font-size: .85em; }

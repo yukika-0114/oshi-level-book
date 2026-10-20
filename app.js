@@ -355,7 +355,7 @@ function renderUsers() {
     </div>
     <div class="toolbar">
       <input id="search" class="input grow" type="search" placeholder="名前・ID・タグで検索" value="${esc(ui.search)}">
-      <select id="sort" class="input" style="flex:0 1 220px">${sortOpts}</select>
+      <select id="sort" class="input sort-select">${sortOpts}</select>
     </div>
     <p class="muted small" id="count">${list.length} / ${data.users.length} 人</p>
     <div id="userList">${list.length ? list.map((u) => userRowHTML(u)).join('') : emptyHTML(data.users.length ? '該当するライバーがいません' : '右下の「+」から推しライバーを登録しましょう')}</div>`;
@@ -466,8 +466,30 @@ function openModal(html, onSubmit, bind) {
   };
   modalForm.querySelectorAll('[data-close]').forEach((b) => b.addEventListener('click', () => modal.close()));
   bind?.(modalForm);
+  modalForm.tabIndex = -1;
+  modalForm.autofocus = true;
   if (!modal.open) modal.showModal();
 }
+
+/* 達成予定の行（日付＋何日後）が 1 行に収まるよう、はみ出す分だけ文字を小さくする */
+function fitOneLine(scope) {
+  scope.querySelectorAll('.stage-eta, .plan-date').forEach((el) => {
+    el.style.fontSize = '';
+    if (!el.clientWidth) return; // 非表示中は測れないので次の描画で
+    let size = parseFloat(getComputedStyle(el).fontSize);
+    while (el.scrollWidth > el.clientWidth && size > 8) {
+      size -= 0.5;
+      el.style.fontSize = `${size}px`;
+    }
+  });
+}
+let fitQueued = false;
+new MutationObserver(() => {
+  if (fitQueued) return;
+  fitQueued = true;
+  requestAnimationFrame(() => { fitQueued = false; fitOneLine(modalForm); });
+}).observe(modalForm, { childList: true, subtree: true });
+window.addEventListener('resize', () => fitOneLine(modalForm));
 modal.addEventListener('click', (e) => { if (e.target === modal) modal.close(); });
 
 // アプリ内の確認ダイアログ（ブラウザ標準の confirm の代わり）
@@ -576,7 +598,7 @@ function bindPlans(form, u, onChange) {
         const d = parseDayKey(row.plan.date);
         return `<div class="plan-item">
           <div class="plan-main">
-            <span>${fmtYMD(d)}<span class="muted small">（${fmtAfter(d)}）</span></span>
+            <span class="plan-date">${fmtYMD(d)}<span class="muted small">（${fmtAfter(d)}）</span></span>
             <span class="plan-amount"><b>+${num(row.plan.amount)}pt</b>
               <button type="button" class="plan-del" data-pdel="${esc(row.plan.id)}" aria-label="削除">${TRASH_ICON}</button></span>
           </div>
@@ -603,7 +625,6 @@ function bindPlans(form, u, onChange) {
     dateEl.value = tomorrow();
     amountEl.value = '';
     previewEl.innerHTML = '';
-    amountEl.focus();
   };
   const closeForm = () => { form.classList.remove('plan-adding'); pForm.hidden = true; };
 
