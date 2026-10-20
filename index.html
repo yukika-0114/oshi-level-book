@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="ja">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <meta name="theme-color" content="#0b0b10">
+  <meta name="description" content="TikTokリスナー向け：推しライバーごとのメンレベと必要ポイントを管理するアプリ">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="推しレベル帳">
+  <title>推しレベル帳</title>
+  <link rel="manifest" href="manifest.webmanifest">
+  <link rel="icon" href="icons/icon.svg" type="image/svg+xml">
+  <link rel="apple-touch-icon" href="icons/icon-192.png">
+  <link rel="stylesheet" href="style.css">
+</head>
+<body>
+  <header class="topbar">
+    <h1 id="pageTitle">推し</h1>
+    <button id="installBtn" class="btn small accent" hidden>インストール</button>
+  </header>
+
+  <main id="view" class="view"></main>
+
+  <button id="fab" class="fab" aria-label="推しライバーを追加">＋</button>
+
+  <nav class="tabbar">
+    <button data-tab="users" class="active">推し</button>
+    <button data-tab="levels">レベル別</button>
+    <button data-tab="table">レベル表</button>
+    <button data-tab="settings">設定</button>
+  </nav>
+
+  <dialog id="modal" class="modal">
+    <form method="dialog" id="modalForm"></form>
+  </dialog>
+
+  <div id="toast" class="toast" role="status"></div>
+
+  <script src="app.js"></script>
+</body>
+</html>
