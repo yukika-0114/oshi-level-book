@@ -411,3 +411,5 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .plan-date { flex: 1 1 auto; min-width: 0; white-space: nowrap; overflow: hidden; }
 .plan-amount { flex: none; }
 .plan-date .small { font-size: .85em; }
+.head-actions { display: flex; align-items: center; gap: 8px; flex: none; }
+.plan-adding .head-actions #toEdit { opacity: .35; pointer-events: none; }
