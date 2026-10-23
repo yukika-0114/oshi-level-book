@@ -269,10 +269,6 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin
 .slide { flex: 0 0 100%; min-width: 0; padding: 0 16px; }
 
 /* 増加ペース */
-.pace-note { margin: 0 0 12px; }
-.pace-block { margin-bottom: 14px; }
-.pace-title { font-size: 12px; color: var(--muted); margin-bottom: 6px; }
-.pace-block .wd { margin-bottom: 8px; }
 .gain-row { display: flex; align-items: center; gap: 8px; }
 .gain-row .month-day { flex: 0 0 96px; }
 .week-preview { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
@@ -488,3 +484,31 @@ a.icon-btn { color: var(--text); text-decoration: none; }
 .toggle-seg input { position: absolute; opacity: 0; pointer-events: none; }
 .toggle-seg span { display: block; padding: 10px 0; text-align: center; background: var(--surface2); color: var(--muted); font-weight: 600; cursor: pointer; }
 .toggle-seg input:checked + span { background: var(--cyan); color: #000; }
+
+/* 追加・編集フォーム：スクロールせず 1 画面に収める */
+#modalForm .modal-head { margin-bottom: 10px; }
+#modalForm .slide-tabs { margin-bottom: 10px; }
+#modalForm .slide .field { margin-bottom: 10px; }
+#modalForm .slide .field > label { margin-bottom: 3px; }
+#modalForm .slide .input { padding: 9px 10px; }
+#modalForm .page-dots { margin: 0 0 12px; }
+.form-top { display: flex; gap: 14px; align-items: flex-start; }
+.avatar-col { flex: none; display: grid; justify-items: center; gap: 2px; padding-top: 4px; }
+.avatar-col #avPreview { cursor: pointer; }
+.tiny { font-size: 10px; }
+.link-btn { padding: 0; border: 0; background: none; color: var(--pink); font-size: 11px; cursor: pointer; }
+.form-top-fields { flex: 1; min-width: 0; }
+.field-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+.field-row .field { min-width: 0; }
+.field-row input[type=date] { min-width: 0; }
+.auto-level { line-height: 42px; }
+
+/* 増加ペース：項目名を左に置いた行 */
+.pace-row { display: grid; grid-template-columns: 64px 1fr; align-items: center; gap: 8px; margin-bottom: 10px; }
+.pace-row.top { align-items: start; }
+.pace-row.top .pace-title { padding-top: 8px; }
+.pace-row[hidden] { display: none; }
+.pace-title { font-size: 12px; color: var(--muted); }
+.pace-stack { display: grid; gap: 6px; min-width: 0; }
+.pace-row .wd button { padding: 6px 0; }
+.input:disabled { opacity: .6; }

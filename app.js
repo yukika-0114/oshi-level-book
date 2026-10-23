@@ -442,7 +442,7 @@ function renderTable() {
     const next = lv < MAX_LV ? num(LEVEL_TABLE[lv + 1] - total) : '最大';
     const oshi = byLevel.get(lv) || [];
     const names = oshi.map((u) => `<span class="oshi-name" data-user="${esc(u.id)}">${esc(u.name)}</span>`).join('、');
-    return `<tr class="${MILESTONES.includes(lv) ? 'milestone' : ''}">
+    return `<tr class="${lv % 10 === 0 ? 'milestone' : ''}">
       <td>Lv.${lv}</td><td>${next}</td><td>${num(total)}</td><td class="oshi-cell">${names}</td></tr>`;
   }).join('');
   return `
@@ -770,7 +770,9 @@ function joinedInfoHTML(u) {
   const block = (label, value, cls = '') => `<div class="info-block ${cls}"><div class="label">${label}</div><div class="value">${value}</div></div>`;
   return block('加入日', d ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : '未設定', d ? '' : 'off')
     + block('経過日数', days == null ? '-' : `${num(days)}<small>日</small>`, days == null ? 'off' : '')
-    + block('スパファン', u.superfan ? '加入中' : '未加入', u.superfan ? 'on' : 'off');
+    + block('スパファン', u.superfan
+      ? (monthsSince(u.superfanSince) == null ? '加入中' : `${num(monthsSince(u.superfanSince))}<small>か月</small>`)
+      : '未加入', u.superfan ? 'on' : 'off');
 }
 
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
@@ -844,45 +846,73 @@ function openDetailModal(u) {
 /* ---------- 追加・編集フォーム（基本情報／増加ペースの 2 画面） ---------- */
 function basicFieldsHTML(u) {
   return `
-    <div class="avatar-edit">
-      <div id="avPreview">${avatarHTML({ name: u?.name || '?', avatar: u?.avatar }, 'xl')}</div>
-      <div class="avatar-actions">
-        <label class="btn small">写真を選ぶ<input type="file" accept="image/*" id="avFile" hidden></label>
-        <button type="button" class="btn small" id="avClear" ${u?.avatar ? '' : 'hidden'}>写真を外す</button>
+    <div class="form-top">
+      <div class="avatar-col">
+        <div id="avPreview" title="タップで写真を選ぶ">${avatarHTML({ name: u?.name || '?', avatar: u?.avatar }, 'xl')}</div>
+        <span class="muted tiny">タップで写真</span>
+        <button type="button" class="link-btn" id="avClear" ${u?.avatar ? '' : 'hidden'}>写真を外す</button>
+        <input type="file" accept="image/*" id="avFile" hidden>
+        <input type="hidden" name="avatar" value="${esc(u?.avatar || '')}">
       </div>
-      <input type="hidden" name="avatar" value="${esc(u?.avatar || '')}">
+      <div class="form-top-fields">
+        <div class="field"><label>ライバー名</label><input class="input" name="name" required value="${esc(u?.name)}" autocomplete="off"></div>
+        <div class="field"><label>ID</label><input class="input" name="handle" maxlength="24" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
+      </div>
     </div>
-    <div class="field"><label>ライバー名</label><input class="input" name="name" required value="${esc(u?.name)}" autocomplete="off"></div>
-    <div class="field"><label>ID</label><input class="input" name="handle" maxlength="24" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
-    <div class="field"><label>メンレベ</label><div class="auto-level" id="autoLv">Lv.${u?.level || '-'}</div></div>
-    <div class="field"><label>現在ポイント</label>
-      <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}">
+    <div class="field-row">
+      <div class="field"><label>メンレベ</label><div class="auto-level" id="autoLv">Lv.${u?.level || '-'}</div></div>
+      <div class="field"><label>現在ポイント</label>
+        <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}"></div>
     </div>
-    <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
-    <div class="field"><label>スパファン</label>
-      <div class="toggle-seg">
-        <label><input type="radio" name="superfan" value="0" ${u?.superfan ? '' : 'checked'}><span>未加入</span></label>
-        <label><input type="radio" name="superfan" value="1" ${u?.superfan ? 'checked' : ''}><span>加入中</span></label>
-      </div></div>
-    <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>`;
+    <div class="field-row">
+      <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
+      <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>
+    </div>`;
+}
+
+/* スパファン：加入中は毎月 +1,300pt。付与日はスパファン加入日の「前日」の日付（1日加入なら月末） */
+const SUPERFAN_POINTS = 1300;
+function superfanDay(since) {
+  const d = parseDayKey(since);
+  if (!d) return null;
+  return d.getDate() === 1 ? 31 : d.getDate() - 1;
+}
+// 加入してから何か月か（満月数）
+function monthsSince(since) {
+  const d = parseDayKey(since);
+  if (!d) return null;
+  const t = startOfToday();
+  let m = (t.getFullYear() - d.getFullYear()) * 12 + (t.getMonth() - d.getMonth());
+  if (t.getDate() < d.getDate()) m--;
+  return Math.max(0, m);
 }
 
 function paceFieldsHTML(u) {
   const find = (type) => (u?.gains || []).find((r) => r.type === type);
-  const daily = find('daily'); const weekly = find('weekly'); const monthly = find('monthly');
+  const daily = find('daily'); const weekly = find('weekly');
+  const monthlyRule = find('monthly');
+  const monthly = monthlyRule?.superfan ? null : monthlyRule; // スパファンの自動設定分は「毎月」の入力値として扱わない
   const wdays = new Set(weekly?.days || []);
   const mday = monthly?.day || new Date().getDate();
   const amount = (name, r) => `<input class="input" name="${name}" type="number" inputmode="numeric" min="0" value="${r?.amount || ''}" placeholder="0"><span class="muted small">pt</span>`;
   return `
-    <p class="muted small pace-note">毎日・毎週・毎月は同じ日に重なるとすべて足されます。毎日0時を過ぎると累計ポイントに自動で加算されます。</p>
-    <div class="pace-block"><div class="pace-title">毎日</div><div class="gain-row">${amount('gDaily', daily)}</div></div>
-    <div class="pace-block"><div class="pace-title">毎週</div>
-      <div class="wd">${WEEKDAYS.map((w, i) => `<button type="button" data-wd="${i}" class="${wdays.has(i) ? 'active' : ''}">${w}</button>`).join('')}</div>
-      <div class="gain-row">${amount('gWeekly', weekly)}</div></div>
-    <div class="pace-block"><div class="pace-title">毎月</div>
+    <div class="pace-row"><span class="pace-title">毎日</span><div class="gain-row">${amount('gDaily', daily)}</div></div>
+    <div class="pace-row top"><span class="pace-title">毎週</span>
+      <div class="pace-stack">
+        <div class="wd">${WEEKDAYS.map((w, i) => `<button type="button" data-wd="${i}" class="${wdays.has(i) ? 'active' : ''}">${w}</button>`).join('')}</div>
+        <div class="gain-row">${amount('gWeekly', weekly)}</div>
+      </div></div>
+    <div class="pace-row"><span class="pace-title">毎月</span>
       <div class="gain-row"><select class="input month-day" name="gDay">${Array.from({ length: 31 }, (_, i) => `<option value="${i + 1}" ${i + 1 === mday ? 'selected' : ''}>${i + 1}日</option>`).join('')}</select>
       ${amount('gMonthly', monthly)}</div></div>
-    <div class="pace-block"><div class="pace-title">これから7日間の増加</div><div class="week-preview" id="pacePreview"></div></div>`;
+    <div class="pace-row"><span class="pace-title">スパファン</span>
+      <div class="toggle-seg">
+        <label><input type="radio" name="superfan" value="0" ${u?.superfan ? '' : 'checked'}><span>未加入</span></label>
+        <label><input type="radio" name="superfan" value="1" ${u?.superfan ? 'checked' : ''}><span>加入中</span></label>
+      </div></div>
+    <div class="pace-row" id="sfRow" ${u?.superfan ? '' : 'hidden'}><span class="pace-title">加入日</span>
+      <input class="input" type="date" name="superfanSince" value="${esc(u?.superfanSince || todayKey())}"></div>
+    <div class="pace-row top"><span class="pace-title">7日間</span><div class="week-preview" id="pacePreview"></div></div>`;
 }
 
 function readPace(form) {
@@ -891,12 +921,38 @@ function readPace(form) {
   if (n('gDaily')) gains.push({ type: 'daily', amount: n('gDaily') });
   const days = [...form.querySelectorAll('[data-wd].active')].map((b) => Number(b.dataset.wd)).sort();
   if (n('gWeekly') && days.length) gains.push({ type: 'weekly', amount: n('gWeekly'), days });
-  if (n('gMonthly')) gains.push({ type: 'monthly', amount: n('gMonthly'), day: Number(form.elements.gDay.value) });
+  const superfan = form.querySelector('input[name="superfan"]:checked')?.value === '1';
+  const sfDay = superfan ? superfanDay(form.elements.superfanSince.value) : null;
+  if (superfan && sfDay) gains.push({ type: 'monthly', amount: SUPERFAN_POINTS, day: sfDay, superfan: true });
+  else if (n('gMonthly')) gains.push({ type: 'monthly', amount: n('gMonthly'), day: Number(form.elements.gDay.value) });
   return gains;
 }
 
 function bindPace(form) {
   const preview = form.querySelector('#pacePreview');
+  const monthAmt = form.elements.gMonthly;
+  const monthDay = form.elements.gDay;
+  const sinceEl = form.elements.superfanSince;
+  const sfRow = form.querySelector('#sfRow');
+  let saved = null; // スパファンにする前の「毎月」の値（解除したら戻す）
+  const isSuperfan = () => form.querySelector('input[name="superfan"]:checked')?.value === '1';
+  // スパファン加入中は「毎月」を 1,300pt・加入日の前日に固定
+  const syncSuperfan = () => {
+    const on = isSuperfan();
+    sfRow.hidden = !on;
+    if (on) {
+      if (!saved && !monthAmt.disabled) saved = { amount: monthAmt.value, day: monthDay.value };
+      monthAmt.value = SUPERFAN_POINTS;
+      const day = superfanDay(sinceEl.value);
+      if (day) monthDay.value = String(day);
+    } else if (monthAmt.disabled) {
+      monthAmt.value = saved?.amount ?? '';
+      monthDay.value = saved?.day ?? String(new Date().getDate());
+      saved = null;
+    }
+    monthAmt.disabled = on;
+    monthDay.disabled = on;
+  };
   const update = () => {
     const tmp = { gains: readPace(form) };
     const d = startOfToday();
@@ -908,6 +964,9 @@ function bindPace(form) {
   };
   form.querySelectorAll('[data-wd]').forEach((b) => b.addEventListener('click', () => { b.classList.toggle('active'); update(); }));
   ['gDaily', 'gWeekly', 'gMonthly', 'gDay'].forEach((name) => form.elements[name].addEventListener('input', update));
+  form.querySelectorAll('input[name="superfan"]').forEach((r) => r.addEventListener('change', () => { syncSuperfan(); update(); }));
+  sinceEl.addEventListener('input', () => { syncSuperfan(); update(); });
+  syncSuperfan();
   update();
 }
 
@@ -1006,7 +1065,7 @@ function openEditModal(u) {
       <button type="button" data-slide="0" class="active">基本情報</button>
       <button type="button" data-slide="1">増加ペース</button>
     </div>`}
-    <div class="slider${adding ? '' : ' draggable'}">
+    <div class="slider draggable">
       <div class="slides">
         <div class="slide">${basicFieldsHTML(u)}</div>
         <div class="slide">${paceFieldsHTML(u)}</div>
@@ -1024,7 +1083,8 @@ function openEditModal(u) {
     t.handle = String(fd.get('handle')).trim().replace(/^@/, '');
     t.avatar = String(fd.get('avatar') || '') || null;
     t.joined = String(fd.get('joined') || '');
-    t.superfan = fd.get('superfan') === '1';
+    t.superfan = modalForm.querySelector('input[name="superfan"]:checked')?.value === '1';
+    t.superfanSince = t.superfan ? (modalForm.elements.superfanSince.value || todayKey()) : '';
     t.tags = String(fd.get('tags')).split(/[,、，]/).map((x) => x.trim()).filter(Boolean);
     t.gains = readPace(modalForm);
     t.updatedAt = now;
@@ -1054,7 +1114,7 @@ function openEditModal(u) {
         <button type="submit" class="btn primary">保存</button>`;
     }
   };
-  const slider = setupSlider(form, { drag: !adding, onChange: renderFoot });
+  const slider = setupSlider(form, { drag: true, onChange: renderFoot });
   const goNext = () => { if (form.elements.name.reportValidity()) slider.next(); };
   renderFoot(0);
 
