@@ -412,10 +412,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .page-dots button::after { content: ""; position: absolute; inset: -10px -6px; } /* タップしやすく */
 .page-dots button.active { width: 20px; border-radius: 4px; background: var(--cyan); }
 
-/* 追加・編集フォームのメンレベ（ポイントから自動） */
-.auto-level { display: flex; align-items: baseline; gap: 8px; margin: -4px 0 14px; }
-.auto-level b { font-size: 18px; color: var(--cyan); }
-.auto-level .small { margin-left: auto; }
 
 .plan-amount-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
 
@@ -442,7 +438,6 @@ input, textarea { -webkit-user-select: text; user-select: text; }
   color: var(--cyan); background: rgba(37, 244, 238, .12); overflow-wrap: anywhere;
 }
 .hero-id { max-width: 100%; font-size: 12px; color: var(--muted); overflow-wrap: anywhere; }
-.head-actions.col { flex-direction: column; gap: 6px; }
 .icon-btn.small { width: 34px; height: 34px; }
 .icon-btn.small svg { width: 18px; height: 18px; }
 a.icon-btn { color: var(--text); text-decoration: none; }
@@ -466,3 +461,13 @@ a.icon-btn { color: var(--text); text-decoration: none; }
 .hist-main { display: flex; justify-content: space-between; gap: 8px; font-size: 14px; }
 .hist-main b { color: var(--cyan); }
 .hist-sub { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; font-size: 12px; color: var(--muted); }
+
+/* 追加・編集フォームのメンレベ（入力欄と同じ高さの表示枠） */
+.auto-level {
+  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2);
+  color: var(--cyan); font-weight: 800; font-size: 16px; line-height: 1.5;
+}
+/* 詳細：次のレベルは上部の下に配置 */
+#dStages { margin: 0 0 16px; }
+/* 名前・ID は 1 行で表示（長い場合は文字を自動で小さくする） */
+.name-chip, .hero-id { white-space: nowrap; overflow: hidden; overflow-wrap: normal; }

@@ -69,6 +69,11 @@ function clamp(n, min, max) { return Math.min(max, Math.max(min, n)); }
 const num = (n) => Number(n).toLocaleString('ja-JP');
 const userById = (id) => data.users.find((u) => u.id === id);
 
+// 見た目の 1 文字（絵文字や結合文字も 1 文字）ごとに分割
+const segmenter = typeof Intl !== 'undefined' && Intl.Segmenter ? new Intl.Segmenter('ja', { granularity: 'grapheme' }) : null;
+const graphemes = (str) => (segmenter ? [...segmenter.segment(String(str))].map((x) => x.segment) : [...String(str)]);
+const NAME_MAX = 15;
+
 function hashColor(str) {
   let h = 0;
   for (const ch of String(str)) h = (h * 31 + ch.codePointAt(0)) >>> 0;
@@ -310,7 +315,7 @@ function setPoints(u, value) {
 // アイコン：写真があれば写真、なければ名前の頭文字
 function avatarHTML(u, cls = '') {
   if (u.avatar) return `<div class="avatar ${cls}"><img src="${esc(u.avatar)}" alt=""></div>`;
-  return `<div class="avatar ${cls}" style="background:${hashColor(u.name)}">${esc([...(u.name || '?')][0])}</div>`;
+  return `<div class="avatar ${cls}" style="background:${hashColor(u.name)}">${esc(graphemes(u.name || '?')[0])}</div>`;
 }
 // 一覧カード：Lv.50 達成までの進み具合
 function pointsHTML(u) {
@@ -506,6 +511,7 @@ function unlockScroll() {
 
 function openModal(html, onSubmit, bind) {
   modalForm.className = '';
+  modalBack = null; // 外側タップで戻る先（なければ閉じる）
   modalForm.innerHTML = html;
   modalForm.onsubmit = (e) => {
     e.preventDefault();
@@ -525,7 +531,7 @@ new MutationObserver(() => {
 
 /* 達成予定の行（日付＋何日後）が 1 行に収まるよう、はみ出す分だけ文字を小さくする */
 function fitOneLine(scope) {
-  scope.querySelectorAll('.stage-eta, .plan-date').forEach((el) => {
+  scope.querySelectorAll('.stage-eta, .plan-date, .name-chip, .hero-id').forEach((el) => {
     el.style.fontSize = '';
     if (!el.clientWidth) return; // 非表示中は測れないので次の描画で
     let size = parseFloat(getComputedStyle(el).fontSize);
@@ -539,13 +545,17 @@ let fitQueued = false;
 new MutationObserver(() => {
   if (fitQueued) return;
   fitQueued = true;
-  requestAnimationFrame(() => { fitQueued = false; fitOneLine(modalForm); });
+  const run = () => { if (!fitQueued) return; fitQueued = false; fitOneLine(modalForm); };
+  requestAnimationFrame(run);
+  setTimeout(run, 60); // 描画フレームが止まっている環境向けの保険
 }).observe(modalForm, { childList: true, subtree: true });
 window.addEventListener('resize', () => fitOneLine(modalForm));
 // モーダルの外側は「上の空いている部分」をタップしたときだけ閉じる（横の誤タップでは閉じない）
+let modalBack = null;
 modal.addEventListener('click', (e) => {
   if (e.target !== modal) return;
-  if (e.clientY < modal.getBoundingClientRect().top) modal.close();
+  if (e.clientY >= modal.getBoundingClientRect().top) return;
+  if (modalBack) modalBack(); else modal.close();
 });
 
 // 小さなシート型ダイアログ（外側をタップすると閉じる）
@@ -611,13 +621,13 @@ const MILESTONES = [10, 20, 30, 40, 45, 49, 50];
 const nextMilestone = (lv) => MILESTONES.find((m) => m > lv) ?? MAX_LV;
 
 // 段階ごとの進捗：次のレベル／次の節目
-function stagesHTML(u) {
+function stagesHTML(u, { milestone: withMilestone = true } = {}) {
   if (u.level >= MAX_LV) return '<p class="stage-done">Lv.50 達成</p>';
   const pts = curPoints(u);
   const approx = hasPoints(u) ? '' : '最大 ';
   const stages = [{ label: '次のレベル', lv: u.level + 1, from: LEVEL_TABLE[u.level] }];
   const milestone = nextMilestone(u.level);
-  if (milestone !== u.level + 1) stages.push({ label: '次の節目', lv: milestone, from: 0 });
+  if (withMilestone && milestone !== u.level + 1) stages.push({ label: '次の節目', lv: milestone, from: 0 });
   const dates = predict(u, stages.map((st) => LEVEL_TABLE[st.lv]));
   return stages.map((st) => {
     const need = LEVEL_TABLE[st.lv];
@@ -753,18 +763,8 @@ function bindPlans(form, u, onChange) {
   return renderList;
 }
 
-// 増加ペースの要約
-function gainsSummary(u) {
-  const rs = (u.gains || []).filter((r) => r.amount > 0);
-  return rs.length ? rs.map((r) => `${ruleLabel(r)} +${num(r.amount)}pt`).join('<br>') : '<span class="muted">未設定</span>';
-}
-
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
 function openDetailModal(u) {
-  const rows = [
-    ['累計ポイント', '<b id="dPts"></b>'],
-    ['増加ペース', `<span class="small">${gainsSummary(u)}</span>`],
-  ];
   const tiktok = u.handle
     ? `<a class="icon-btn" href="https://www.tiktok.com/@${encodeURIComponent(u.handle)}" target="_blank" rel="noopener" aria-label="TikTokで開く" title="TikTokで開く">${LINK_ICON}</a>` : '';
   openModal(`
@@ -776,31 +776,18 @@ function openDetailModal(u) {
           <div class="name-chip">${esc(u.name)}</div>
           ${u.handle ? `<div class="hero-id">@${esc(u.handle)}</div>` : ''}
         </div>
-        <div class="head-actions col"><button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button>${tiktok}</div>
+        <div class="head-actions">${tiktok}<button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button></div>
       </div>
       <div class="lv-hero-bar"><i id="dBar"></i><span id="dBarText"></span></div>
     </div>
-    <div class="page-dots top" role="tablist">
-      <button type="button" data-slide="0" class="active" aria-label="詳細"></button>
-      <button type="button" data-slide="1" aria-label="追加予定"></button>
-    </div>
-    <div class="slider draggable">
-      <div class="slides">
-        <div class="slide">
-          <dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-          <div class="stages" id="dStages"></div>
-        </div>
-        <div class="slide">
-          <div class="plans">
-            <div class="plans-head"><span>追加予定</span>
-              <span class="plans-actions">
-                <button type="button" class="btn small" id="planOpen">予定を追加</button>
-                <button type="button" class="icon-btn small" id="historyOpen" aria-label="追加履歴" title="追加履歴">${CLOCK_ICON}</button>
-              </span></div>
-            <div id="planList"></div>
-          </div>
-        </div>
-      </div>
+    <div class="stages" id="dStages"></div>
+    <div class="plans">
+      <div class="plans-head"><span>追加予定</span>
+        <span class="plans-actions">
+          <button type="button" class="btn small" id="planOpen">予定を追加</button>
+          <button type="button" class="icon-btn small" id="historyOpen" aria-label="追加履歴" title="追加履歴">${CLOCK_ICON}</button>
+        </span></div>
+      <div id="planList"></div>
     </div>
     <div class="row"><button type="button" class="btn" data-close>閉じる</button></div>`,
   () => false,
@@ -820,21 +807,13 @@ function openDetailModal(u) {
         bar.style.width = `${clamp(((pts - from) / Math.max(1, need - from)) * 100, 0, 100)}%`;
         barText.textContent = `${num(pts)}/${num(need)}`;
       }
-      form.querySelector('#dPts').textContent = hasPoints(u) ? `${num(u.points)}pt` : '-';
-      form.querySelector('#dStages').innerHTML = stagesHTML(u);
+      form.querySelector('#dStages').innerHTML = stagesHTML(u, { milestone: false });
       renderPlans();
     };
     const renderPlans = bindPlans(form, u, () => show());
     show();
     refreshOpenDetail = () => { if (modal.open && form.contains(lvEl)) show(); };
     form.querySelector('#toEdit').addEventListener('click', () => openEditModal(u));
-    // 「詳細」と「追加予定」を横スライドで切り替え（同じ方向に続けても回り込む）
-    const tabs = form.querySelectorAll('[data-slide]');
-    const slider = setupSlider(form, {
-      drag: true,
-      onChange: (i) => tabs.forEach((b) => b.classList.toggle('active', Number(b.dataset.slide) === i)),
-    });
-    tabs.forEach((b) => b.addEventListener('click', () => slider.to(Number(b.dataset.slide))));
   });
 }
 
@@ -849,9 +828,9 @@ function basicFieldsHTML(u) {
       </div>
       <input type="hidden" name="avatar" value="${esc(u?.avatar || '')}">
     </div>
-    <div class="field"><label>ライバー名</label><input class="input" name="name" required maxlength="15" value="${esc(u?.name)}" autocomplete="off"></div>
+    <div class="field"><label>ライバー名</label><input class="input" name="name" required value="${esc(u?.name)}" autocomplete="off"></div>
     <div class="field"><label>ID</label><input class="input" name="handle" maxlength="24" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
-    <div class="auto-level"><span class="muted">メンレベ</span><b id="autoLv">Lv.${u?.level || '-'}</b></div>
+    <div class="field"><label>メンレベ</label><div class="auto-level" id="autoLv">Lv.${u?.level || '-'}</div></div>
     <div class="field"><label>現在ポイント</label>
       <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}">
     </div>
@@ -1026,6 +1005,7 @@ function openEditModal(u) {
     if (!adding) { openDetailModal(t); return false; } // 編集後は詳細表示に戻る
   });
 
+  if (u) modalBack = () => openDetailModal(u); // 編集中に外側をタップしたら詳細へ戻る
   const form = modalForm;
   const foot = form.querySelector('#editFoot');
   const tabs = form.querySelectorAll('[data-slide]');
@@ -1081,6 +1061,14 @@ function openEditModal(u) {
   });
   bindPace(form);
   bindAvatar(form);
+  // 名前は絵文字を含めて 15 文字まで（変換中は切らない）
+  const nameEl = form.elements.name;
+  const limitName = () => {
+    const g = graphemes(nameEl.value);
+    if (g.length > NAME_MAX) nameEl.value = g.slice(0, NAME_MAX).join('');
+  };
+  nameEl.addEventListener('input', (e) => { if (!e.isComposing) limitName(); });
+  nameEl.addEventListener('compositionend', limitName);
 }
 
 // 写真の範囲選択：ドラッグで位置、スライダー／ピンチ／ホイールで拡大縮小。
