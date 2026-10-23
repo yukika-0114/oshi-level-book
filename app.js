@@ -763,13 +763,14 @@ function bindPlans(form, u, onChange) {
   return renderList;
 }
 
-// 詳細ページ：加入日と経過日数
+// 詳細ページ：加入日・経過日数・スパファンを 3 つのブロックで表示
 function joinedInfoHTML(u) {
   const d = parseDayKey(u.joined);
-  if (!d) return '<div><dt>加入日</dt><dd class="muted">未設定（編集から設定できます）</dd></div>';
-  const days = Math.max(0, Math.round((startOfToday() - d) / 864e5));
-  return `<div><dt>加入日</dt><dd>${fmtYMD(d)}</dd></div>
-    <div><dt>経過日数</dt><dd><b class="days">${num(days)}</b>日</dd></div>`;
+  const days = d ? Math.max(0, Math.round((startOfToday() - d) / 864e5)) : null;
+  const block = (label, value, cls = '') => `<div class="info-block ${cls}"><div class="label">${label}</div><div class="value">${value}</div></div>`;
+  return block('加入日', d ? `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}` : '未設定', d ? '' : 'off')
+    + block('経過日数', days == null ? '-' : `${num(days)}<small>日</small>`, days == null ? 'off' : '')
+    + block('スパファン', u.superfan ? '加入中' : '未加入', u.superfan ? 'on' : 'off');
 }
 
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
@@ -796,7 +797,7 @@ function openDetailModal(u) {
     <div class="slider draggable">
       <div class="slides">
         <div class="slide">
-          <dl class="kv" id="dInfo"></dl>
+          <div class="info-blocks" id="dInfo"></div>
         </div>
         <div class="slide">
           <div class="stages" id="dStages"></div>
@@ -858,6 +859,11 @@ function basicFieldsHTML(u) {
       <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}">
     </div>
     <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
+    <div class="field"><label>スパファン</label>
+      <div class="toggle-seg">
+        <label><input type="radio" name="superfan" value="0" ${u?.superfan ? '' : 'checked'}><span>未加入</span></label>
+        <label><input type="radio" name="superfan" value="1" ${u?.superfan ? 'checked' : ''}><span>加入中</span></label>
+      </div></div>
     <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>`;
 }
 
@@ -1018,6 +1024,7 @@ function openEditModal(u) {
     t.handle = String(fd.get('handle')).trim().replace(/^@/, '');
     t.avatar = String(fd.get('avatar') || '') || null;
     t.joined = String(fd.get('joined') || '');
+    t.superfan = fd.get('superfan') === '1';
     t.tags = String(fd.get('tags')).split(/[,、，]/).map((x) => x.trim()).filter(Boolean);
     t.gains = readPace(modalForm);
     t.updatedAt = now;

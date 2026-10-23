@@ -463,12 +463,28 @@ a.icon-btn { color: var(--text); text-decoration: none; }
 .hist-sub { display: flex; justify-content: space-between; gap: 8px; margin-top: 2px; font-size: 12px; color: var(--muted); }
 
 /* 追加・編集フォームのメンレベ（入力欄と同じ高さの表示枠） */
-.auto-level {
-  padding: 10px 12px; border-radius: 10px; border: 1px solid var(--border); background: var(--surface2);
-  color: var(--cyan); font-weight: 800; font-size: 16px; line-height: 1.5;
-}
 /* 詳細：次のレベルは上部の下に配置 */
 #dStages { margin: 0 0 16px; }
 /* 名前・ID は 1 行で表示（長い場合は文字を自動で小さくする） */
 .name-chip, .hero-id { white-space: nowrap; overflow: hidden; overflow-wrap: normal; }
-.kv .days { font-size: 20px; color: var(--cyan); margin-right: 2px; }
+
+/* 追加・編集フォームのメンレベ（枠なしで表示のみ） */
+.auto-level { color: var(--cyan); font-weight: 800; font-size: 18px; line-height: 1.4; }
+
+/* 追加ページの次のレベル（箱なし） */
+#dStages { padding: 0; background: none; border-radius: 0; }
+
+/* 詳細ページ：加入日・経過日数・スパファン */
+.info-blocks { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin: 0 0 16px; }
+.info-block { min-width: 0; padding: 12px 8px; border-radius: 12px; border: 1px solid var(--border); background: var(--surface2); text-align: center; }
+.info-block .label { font-size: 11px; color: var(--muted); }
+.info-block .value { margin-top: 4px; font-size: 16px; font-weight: 800; white-space: nowrap; }
+.info-block .value small { margin-left: 2px; font-size: 11px; font-weight: 600; color: var(--muted); }
+.info-block.on .value { color: var(--cyan); }
+.info-block.off .value { color: var(--muted); font-weight: 600; }
+
+/* 2択の切り替え（スパファン） */
+.toggle-seg { display: grid; grid-template-columns: 1fr 1fr; border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
+.toggle-seg input { position: absolute; opacity: 0; pointer-events: none; }
+.toggle-seg span { display: block; padding: 10px 0; text-align: center; background: var(--surface2); color: var(--muted); font-weight: 600; cursor: pointer; }
+.toggle-seg input:checked + span { background: var(--cyan); color: #000; }
