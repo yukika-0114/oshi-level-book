@@ -470,6 +470,20 @@ function refreshUserList() {
 /* ========== モーダル ========== */
 const modal = $('#modal');
 const modalForm = $('#modalForm');
+/* モーダル表示中は背面をスクロールさせない（iOS でも効くよう body を固定する） */
+let scrollLocks = 0;
+let savedScrollY = 0;
+function lockScroll() {
+  if (scrollLocks++ > 0) return;
+  savedScrollY = window.scrollY;
+  Object.assign(document.body.style, { position: 'fixed', top: `-${savedScrollY}px`, left: '0', right: '0', width: '100%' });
+}
+function unlockScroll() {
+  if (scrollLocks === 0 || --scrollLocks > 0) return;
+  Object.assign(document.body.style, { position: '', top: '', left: '', right: '', width: '' });
+  window.scrollTo(0, savedScrollY);
+}
+
 function openModal(html, onSubmit, bind) {
   modalForm.className = '';
   modalForm.innerHTML = html;
@@ -481,8 +495,13 @@ function openModal(html, onSubmit, bind) {
   bind?.(modalForm);
   modalForm.tabIndex = -1;
   modalForm.autofocus = true;
-  if (!modal.open) modal.showModal();
+  if (!modal.open) { lockScroll(); modalLocked = true; modal.showModal(); }
 }
+// 閉じたら背面のスクロール固定を解除（close イベントは環境によって遅れるため open 属性を監視）
+let modalLocked = false;
+new MutationObserver(() => {
+  if (!modal.open && modalLocked) { modalLocked = false; unlockScroll(); }
+}).observe(modal, { attributes: true, attributeFilter: ['open'] });
 
 /* 達成予定の行（日付＋何日後）が 1 行に収まるよう、はみ出す分だけ文字を小さくする */
 function fitOneLine(scope) {
@@ -524,7 +543,7 @@ function askConfirm({ title, message, ok = 'OK', danger = false }) {
         <button type="button" class="btn" data-ans="0">キャンセル</button>
         <button type="button" class="btn ${danger ? 'primary' : 'accent'}" data-ans="1">${ok}</button>
       </div>`;
-    const finish = (v) => { dlg.close(); dlg.remove(); resolve(v); };
+    const finish = (v) => { dlg.close(); dlg.remove(); unlockScroll(); resolve(v); };
     dlg.addEventListener('click', (e) => {
       const b = e.target.closest('[data-ans]');
       if (b) finish(b.dataset.ans === '1');
@@ -532,6 +551,7 @@ function askConfirm({ title, message, ok = 'OK', danger = false }) {
     });
     dlg.addEventListener('cancel', (e) => { e.preventDefault(); finish(false); });
     document.body.appendChild(dlg);
+    lockScroll();
     dlg.showModal();
   });
 }
@@ -686,13 +706,21 @@ function gainsSummary(u) {
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
 function openDetailModal(u) {
   const rows = [
-    ['メンレベ', '<span id="dLv"></span>'],
     ['累計ポイント', `<input class="input kv-input" id="dPts" type="number" inputmode="numeric" min="0" placeholder="-">`],
     ['増加ペース', `<span class="small">${gainsSummary(u)}</span>`],
   ];
   openModal(`
-    <div class="card-head"><div class="detail-title">${avatarHTML(u, 'md')}<div><h3>${esc(u.name)}</h3>${u.handle ? `<div class="muted small">@${esc(u.handle)}</div>` : ''}</div></div>
-      <div class="head-actions">${tiktokLink(u)}<button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button></div></div>
+    <div class="lv-hero">
+      <div class="lv-hero-top">
+        ${avatarHTML(u, 'lg')}
+        <div class="lv-hero-main">
+          <div class="lv-hero-title" id="dLv"></div>
+          <div class="lv-hero-name"><span class="name-chip">${esc(u.name)}</span>${u.handle ? `<span class="muted small">@${esc(u.handle)}</span>` : ''}</div>
+        </div>
+        <div class="head-actions">${tiktokLink(u)}<button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button></div>
+      </div>
+      <div class="lv-hero-bar"><i id="dBar"></i><span id="dBarText"></span></div>
+    </div>
     <div class="page-dots top" role="tablist">
       <button type="button" data-slide="0" class="active" aria-label="詳細"></button>
       <button type="button" data-slide="1" aria-label="追加"></button>
@@ -745,7 +773,19 @@ function openDetailModal(u) {
     const lvEl = form.querySelector('#dLv');
     const ptEl = form.querySelector('#dPts');
     const show = () => {
-      lvEl.innerHTML = `<b style="color:${COLOR}">Lv.${u.level || '-'}</b> / 50`;
+      lvEl.textContent = `レベル${u.level}`;
+      // ゲージは「今のレベル → 次のレベル」の進み具合、数字は累計ポイント / 次のレベルの累計
+      const pts = curPoints(u);
+      const bar = form.querySelector('#dBar');
+      const barText = form.querySelector('#dBarText');
+      if (u.level >= MAX_LV) {
+        bar.style.width = '100%';
+        barText.textContent = `${num(pts)}/MAX`;
+      } else {
+        const from = LEVEL_TABLE[u.level]; const need = LEVEL_TABLE[u.level + 1];
+        bar.style.width = `${clamp(((pts - from) / Math.max(1, need - from)) * 100, 0, 100)}%`;
+        barText.textContent = `${num(pts)}/${num(need)}`;
+      }
       ptEl.value = hasPoints(u) ? u.points : '';
       form.querySelector('#dStages').innerHTML = stagesHTML(u);
       renderPlans();
@@ -1057,6 +1097,7 @@ function openCropper(file) {
           <button type="button" class="btn primary" data-ans="1">決定</button>
         </div>`;
       document.body.appendChild(dlg);
+      lockScroll();
       dlg.showModal();
 
       const stage = dlg.querySelector('.crop-stage');
@@ -1125,7 +1166,7 @@ function openCropper(file) {
           canvas.getContext('2d').drawImage(img, -x / scale(), -y / scale(), S / scale(), S / scale(), 0, 0, size, size);
           result = canvas.toDataURL('image/jpeg', 0.85);
         }
-        dlg.close(); dlg.remove(); URL.revokeObjectURL(url);
+        dlg.close(); dlg.remove(); URL.revokeObjectURL(url); unlockScroll();
         resolve(result);
       };
       dlg.addEventListener('click', (e) => { const b = e.target.closest('[data-ans]'); if (b) finish(b.dataset.ans === '1'); });
