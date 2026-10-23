@@ -413,3 +413,18 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .plan-date .small { font-size: .85em; }
 .head-actions { display: flex; align-items: center; gap: 8px; flex: none; }
 .plan-adding .head-actions #toEdit { opacity: .35; pointer-events: none; }
+
+/* 詳細モーダル上部の●○（タップでも切り替え） */
+.page-dots.top { margin: 0 0 12px; }
+.page-dots button {
+  position: relative; width: 8px; height: 8px; padding: 0; border: 0; border-radius: 50%;
+  background: var(--border); cursor: pointer; transition: .2s;
+}
+.page-dots button::after { content: ""; position: absolute; inset: -10px -6px; } /* タップしやすく */
+.page-dots button.active { width: 20px; border-radius: 4px; background: var(--cyan); }
+.plan-adding .page-dots.top { opacity: .35; pointer-events: none; }
+
+/* 追加・編集フォームのメンレベ（ポイントから自動） */
+.auto-level { display: flex; align-items: baseline; gap: 8px; margin: -4px 0 14px; }
+.auto-level b { font-size: 18px; color: var(--cyan); }
+.auto-level .small { margin-left: auto; }

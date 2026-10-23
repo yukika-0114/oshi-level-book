@@ -678,9 +678,9 @@ function openDetailModal(u) {
   openModal(`
     <div class="card-head"><div class="detail-title">${avatarHTML(u, 'md')}<div><h3>${esc(u.name)}</h3>${u.handle ? `<div class="muted small">@${esc(u.handle)}</div>` : ''}</div></div>
       <div class="head-actions">${tiktokLink(u)}<button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button></div></div>
-    <div class="slide-tabs">
-      <button type="button" data-slide="0" class="active">詳細</button>
-      <button type="button" data-slide="1">追加予定</button>
+    <div class="page-dots top" role="tablist">
+      <button type="button" data-slide="0" class="active" aria-label="詳細"></button>
+      <button type="button" data-slide="1" aria-label="追加予定"></button>
     </div>
     <div class="slider draggable">
       <div class="slides">
@@ -760,15 +760,10 @@ function basicFieldsHTML(u) {
     </div>
     <div class="field"><label>ライバー名</label><input class="input" name="name" required maxlength="60" value="${esc(u?.name)}" autocomplete="off"></div>
     <div class="field"><label>ID</label><input class="input" name="handle" maxlength="60" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
-    <div class="field"><label>メンレベ</label>
-      <div class="stepper">
-        <button type="button" data-dec>−</button>
-        <input class="input" type="number" inputmode="numeric" min="0" max="${MAX_LV}" name="level" value="${u?.level ?? 0}" style="color:${COLOR}">
-        <button type="button" data-inc>＋</button>
-      </div></div>
     <div class="field"><label>現在ポイント</label>
       <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}">
     </div>
+    <div class="auto-level"><span class="muted">メンレベ</span><b id="autoLv">Lv.${u?.level || '-'}</b><span class="muted small">ポイントから自動で反映</span></div>
     <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
     <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>`;
 }
@@ -844,11 +839,11 @@ function setupSlider(form, { drag, onChange }) {
     track.append(panels[cur], panels[1 - cur]);
     setX(0);
     busy = false;
-    onChange?.(cur);
   };
   const go = (dir) => {
     if (busy) return;
     busy = true;
+    onChange?.(1 - cur); // 画面が動き出すのと同時に●○やボタンを切り替える
     place(dir);
     setX(dir > 0 ? 0 : -100);
     void track.offsetWidth; // 位置を確定させてからアニメーション
@@ -883,6 +878,7 @@ function setupSlider(form, { drag, onChange }) {
       if (!decided) return;
       busy = true;
       const switched = Math.abs(dx) > slider.clientWidth * 0.2;
+      if (switched) onChange?.(1 - cur);
       setX(switched ? (dir > 0 ? -100 : 0) : (dir > 0 ? 0 : -100), 0, true);
       afterAnim(() => settle(switched));
       // スライド直後のクリックでボタンが反応しないようにする
@@ -933,8 +929,7 @@ function openEditModal(u) {
     t.gains = readPace(modalForm);
     t.updatedAt = now;
     if (adding) data.users.push(t);
-    t.level = clamp(Math.round(Number(fd.get('level')) || 0), 0, MAX_LV);
-    setPoints(t, fd.get('points')); // 入力した値は今日の分まで含むとみなし、明日から自動加算
+    setPoints(t, fd.get('points')); // メンレベはポイントから自動で決まる // 入力した値は今日の分まで含むとみなし、明日から自動加算
     save(); render();
     toast(adding ? `${name} さんを追加しました` : '保存しました');
     if (!adding) { openDetailModal(t); return false; } // 編集後は詳細表示に戻る
@@ -983,25 +978,15 @@ function openEditModal(u) {
     const i = Number(b.dataset.slide);
     if (adding && i === 1) goNext(); else slider.to(i);
   }));
-  const lvInput = form.elements.level;
   const ptInput = form.elements.points;
-  // レベルを変えたら、ポイントをそのレベルの範囲に合わせる
-  const syncPointsToLevel = () => {
-    const lv = clamp(Number(lvInput.value) || 0, 0, MAX_LV);
-    const p = ptInput.value.trim();
-    if (p === '' ? lv > 0 : !pointsFitLevel(Number(p), lv)) ptInput.value = LEVEL_TABLE[lv];
-  };
-  form.querySelectorAll('[data-inc],[data-dec]').forEach((b) => b.addEventListener('click', () => {
-    lvInput.value = clamp((Number(lvInput.value) || 0) + ('inc' in b.dataset ? 1 : -1), 0, MAX_LV);
-    syncPointsToLevel();
-  }));
-  lvInput.addEventListener('change', syncPointsToLevel);
+  const autoLv = form.querySelector('#autoLv');
   // 0 のままフォーカスしたら空にして、そのまま入力できるようにする
   ptInput.addEventListener('focus', () => { if (ptInput.value.trim() !== '' && Number(ptInput.value) === 0) ptInput.value = ''; });
-  // ポイントを入れたら、レベルを計算し直す
+  // ポイントを入れたら、メンレベの表示を計算し直す
   ptInput.addEventListener('input', () => {
     const p = ptInput.value.trim();
-    if (p !== '') lvInput.value = levelFromPoints(Math.max(0, Number(p) || 0));
+    const lv = p === '' ? (u?.level || 0) : levelFromPoints(Math.max(0, Number(p) || 0));
+    autoLv.textContent = `Lv.${lv || '-'}`;
   });
   bindPace(form);
   bindAvatar(form);
