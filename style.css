@@ -471,3 +471,4 @@ a.icon-btn { color: var(--text); text-decoration: none; }
 #dStages { margin: 0 0 16px; }
 /* 名前・ID は 1 行で表示（長い場合は文字を自動で小さくする） */
 .name-chip, .hero-id { white-space: nowrap; overflow: hidden; overflow-wrap: normal; }
+.kv .days { font-size: 20px; color: var(--cyan); margin-right: 2px; }

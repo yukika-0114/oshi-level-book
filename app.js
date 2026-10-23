@@ -763,6 +763,15 @@ function bindPlans(form, u, onChange) {
   return renderList;
 }
 
+// 詳細ページ：加入日と経過日数
+function joinedInfoHTML(u) {
+  const d = parseDayKey(u.joined);
+  if (!d) return '<div><dt>加入日</dt><dd class="muted">未設定（編集から設定できます）</dd></div>';
+  const days = Math.max(0, Math.round((startOfToday() - d) / 864e5));
+  return `<div><dt>加入日</dt><dd>${fmtYMD(d)}</dd></div>
+    <div><dt>経過日数</dt><dd><b class="days">${num(days)}</b>日</dd></div>`;
+}
+
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
 function openDetailModal(u) {
   const tiktok = u.handle
@@ -781,15 +790,16 @@ function openDetailModal(u) {
       <div class="lv-hero-bar"><i id="dBar"></i><span id="dBarText"></span></div>
     </div>
     <div class="page-dots top" role="tablist">
-      <button type="button" data-slide="0" class="active" aria-label="次のレベル"></button>
+      <button type="button" data-slide="0" class="active" aria-label="詳細"></button>
       <button type="button" data-slide="1" aria-label="追加予定"></button>
     </div>
     <div class="slider draggable">
       <div class="slides">
         <div class="slide">
-          <div class="stages" id="dStages"></div>
+          <dl class="kv" id="dInfo"></dl>
         </div>
         <div class="slide">
+          <div class="stages" id="dStages"></div>
           <div class="plans">
             <div class="plans-head"><span>追加予定</span>
               <span class="plans-actions">
@@ -806,19 +816,13 @@ function openDetailModal(u) {
   (form) => {
     const lvEl = form.querySelector('#dLv');
     const show = () => {
-      lvEl.textContent = `レベル${u.level}`;
-      // ゲージは「今のレベル → 次のレベル」の進み具合、数字は累計ポイント / 次のレベルの累計
+      lvEl.textContent = `Lv.${u.level}`;
+      // 上部のゲージは Lv.50（最大）までの進み具合で固定
       const pts = curPoints(u);
-      const bar = form.querySelector('#dBar');
-      const barText = form.querySelector('#dBarText');
-      if (u.level >= MAX_LV) {
-        bar.style.width = '100%';
-        barText.textContent = `${num(pts)}/MAX`;
-      } else {
-        const from = LEVEL_TABLE[u.level]; const need = LEVEL_TABLE[u.level + 1];
-        bar.style.width = `${clamp(((pts - from) / Math.max(1, need - from)) * 100, 0, 100)}%`;
-        barText.textContent = `${num(pts)}/${num(need)}`;
-      }
+      const goal = LEVEL_TABLE[GOAL_LV];
+      form.querySelector('#dBar').style.width = `${clamp((pts / goal) * 100, 0, 100)}%`;
+      form.querySelector('#dBarText').textContent = `${num(pts)}/${num(goal)}`;
+      form.querySelector('#dInfo').innerHTML = joinedInfoHTML(u);
       form.querySelector('#dStages').innerHTML = stagesHTML(u, { milestone: false });
       renderPlans();
     };
