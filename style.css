@@ -594,3 +594,13 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .log-item:first-child .log-dot { background: var(--cyan); }
 .log-item b { color: var(--cyan); }
 .log-date { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* カレンダー：枠なしの×、月名タップで日付選択、メモ */
+.close-btn { display: grid; place-items: center; width: 40px; height: 40px; padding: 0; border: 0; background: none; color: var(--text); cursor: pointer; }
+.close-btn svg { width: 24px; height: 24px; }
+.cal-jump { position: relative; display: inline-flex; align-items: center; gap: 6px; cursor: pointer; }
+.cal-jump .cal-caret { color: var(--muted); }
+.cal-jump input { position: absolute; inset: 0; width: 100%; height: 100%; opacity: 0; cursor: pointer; }
+.cal-memo { min-height: 64px; margin-top: 6px; resize: none; line-height: 1.5; }
+.cal-memo-mark { position: absolute; bottom: 4px; width: 14px; height: 2px; border-radius: 2px; background: transparent; }
+.cal-cell.memo .cal-memo-mark { background: #ffd34d; }

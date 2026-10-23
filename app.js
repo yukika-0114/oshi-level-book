@@ -44,6 +44,7 @@ function normalize(d) {
     if (!Array.isArray(u.plans)) u.plans = [];
     if (!Array.isArray(u.history)) u.history = [];
     if (!Array.isArray(u.levelLog)) u.levelLog = [];
+    if (!u.notes || typeof u.notes !== 'object') u.notes = {};
   });
   delete d.categories; delete d.self; delete d.history; delete d.table; // レベル表は固定
   d.version = 5;
@@ -230,7 +231,15 @@ function parseDayKey(k) {
   const [y, m, d] = String(k).split('-').map(Number);
   return y && m && d ? new Date(y, m - 1, d) : null;
 }
-const gainOn = (u, d) => (u.gains || []).reduce((sum, r) => sum + (r.amount > 0 && ruleMatches(r, d) ? r.amount : 0), 0);
+// その日にこのルールで増えるか（加入日より前、スパファン加入日より前のスパファン分は増えない）
+function ruleActive(u, r, d) {
+  if (!(r.amount > 0) || !ruleMatches(r, d)) return false;
+  const key = dayKey(d);
+  if (u.joined && key < u.joined) return false;
+  if (r.superfan && u.superfanSince && key < u.superfanSince) return false;
+  return true;
+}
+const gainOn = (u, d) => (u.gains || []).reduce((sum, r) => sum + (ruleActive(u, r, d) ? r.amount : 0), 0);
 
 // 追加されたポイントの履歴（新しい順・最大 300 件）
 const HISTORY_LIMIT = 300;
@@ -809,11 +818,12 @@ function levelLogHTML(u) {
 function dayBreakdown(u, d) {
   const items = [];
   for (const r of u.gains || []) {
-    if (!(r.amount > 0) || !ruleMatches(r, d)) continue;
+    if (!ruleActive(u, r, d)) continue;
     const label = r.type === 'daily' ? '毎日' : r.type === 'weekly' ? '毎週' : (r.superfan ? 'スパファン' : '毎月');
     items.push({ label, amount: r.amount });
   }
   const key = dayKey(d);
+  if (u.joined && key < u.joined) return items;
   for (const pl of u.plans || []) {
     if (pl.amount > 0 && pl.date === key) items.push({ label: `追加予定${pl.time ? `（${pl.time}）` : ''}`, amount: pl.amount, plan: true });
   }
@@ -822,10 +832,15 @@ function dayBreakdown(u, d) {
 function openCalendar(u) {
   const now = startOfToday();
   let y = now.getFullYear(); let m = now.getMonth();
+  let selected = null; // 選択中の日付
+  u.notes = u.notes || {};
   openSheet(`
     <div class="sheet-title"><h3>増加カレンダー</h3>
-      <button type="button" class="icon-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
-    <div class="cal-head"><b id="calTitle"></b><span class="muted tiny">左右にスライドで月を切り替え</span></div>
+      <button type="button" class="close-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
+    <div class="cal-head">
+      <label class="cal-jump"><b id="calTitle"></b><svg class="cal-caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
+        <input type="date" id="calJump" aria-label="日付を選ぶ"></label>
+    </div>
     <div class="cal-body" id="calBody">
       <div class="cal-grid cal-week">${WEEKDAYS.map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="cal-grid" id="calGrid"></div>
@@ -835,11 +850,28 @@ function openCalendar(u) {
     const body = dlg.querySelector('#calBody');
     const grid = dlg.querySelector('#calGrid');
     const detail = dlg.querySelector('#calDetail');
+    const jump = dlg.querySelector('#calJump');
+
     const showDetail = (d) => {
+      selected = d;
+      const key = dayKey(d);
       const items = dayBreakdown(u, d);
       detail.innerHTML = `<div class="cal-detail-title">${fmtYMD(d)}</div>` + (items.length
         ? items.map((it) => `<div class="cal-detail-row ${it.plan ? 'plan' : ''}"><span>${esc(it.label)}</span><b>+${num(it.amount)}pt</b></div>`).join('')
-        : '<p class="muted small">増加はありません</p>');
+        : '<p class="muted small">増加はありません</p>')
+        + `<textarea class="input cal-memo" id="calMemo" rows="2" maxlength="500" placeholder="メモを書く">${esc(u.notes[key] || '')}</textarea>`;
+      // メモは入力するたびに自動保存
+      const memo = detail.querySelector('#calMemo');
+      let timer;
+      memo.addEventListener('input', () => {
+        clearTimeout(timer);
+        timer = setTimeout(() => {
+          const v = memo.value.trim();
+          if (v) u.notes[key] = v; else delete u.notes[key];
+          save();
+          grid.querySelector(`[data-day="${d.getDate()}"]`)?.classList.toggle('memo', !!v);
+        }, 300);
+      });
     };
     const draw = () => {
       dlg.querySelector('#calTitle').textContent = `${y}年${m + 1}月`;
@@ -852,20 +884,35 @@ function openCalendar(u) {
         const items = dayBreakdown(u, d);
         const sum = items.reduce((a, it) => a + it.amount, 0);
         total += sum;
-        const cls = ['cal-cell', sum ? 'on' : '', items.some((it) => it.plan) ? 'plan' : '', d.getTime() === now.getTime() ? 'today' : ''].join(' ');
-        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : ''}</b><i class="cal-dot"></i></button>`);
+        const cls = ['cal-cell', sum ? 'on' : '', items.some((it) => it.plan) ? 'plan' : '',
+          d.getTime() === now.getTime() ? 'today' : '', u.notes[dayKey(d)] ? 'memo' : '',
+          selected && d.getTime() === selected.getTime() ? 'sel' : ''].join(' ');
+        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : ''}</b><i class="cal-dot"></i><i class="cal-memo-mark"></i></button>`);
       }
       grid.innerHTML = cells.join('');
       dlg.querySelector('#calTotal').innerHTML = `${m + 1}月の増加 合計 <b>+${num(total)}pt</b>`;
-      detail.innerHTML = '';
+      if (selected && selected.getFullYear() === y && selected.getMonth() === m) showDetail(selected);
+      else detail.innerHTML = '';
     };
+    const animateIn = (dir) => body.animate?.([{ transform: `translateX(${dir * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'ease-out' });
     // 月を移動（スライドの向きに合わせて流れるように切り替え）
     const shift = (dir) => {
       m += dir;
       if (m < 0) { m = 11; y--; } else if (m > 11) { m = 0; y++; }
       draw();
-      body.animate?.([{ transform: `translateX(${dir * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'ease-out' });
+      animateIn(dir);
     };
+    // 月名をタップして日付を選ぶと、その月へ移動して詳細を開く
+    jump.value = dayKey(now);
+    jump.addEventListener('click', () => { try { jump.showPicker?.(); } catch { /* 対応していない環境 */ } });
+    jump.addEventListener('change', () => {
+      const d = parseDayKey(jump.value);
+      if (!d) return;
+      const dir = (d.getFullYear() * 12 + d.getMonth()) >= (y * 12 + m) ? 1 : -1;
+      y = d.getFullYear(); m = d.getMonth(); selected = d;
+      draw();
+      animateIn(dir);
+    });
     // 横スライドで前後の月へ
     let sx = 0; let sy = 0; let tracking = false; let swiped = false;
     body.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; tracking = true; swiped = false; });
@@ -1186,7 +1233,7 @@ function openEditModal(u) {
     const name = String(fd.get('name')).trim();
     if (!name) { slider.to(0); return false; }
     const now = Date.now();
-    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], createdAt: now };
+    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], notes: {}, createdAt: now };
     t.name = name;
     t.handle = String(fd.get('handle')).trim().replace(/^@/, '');
     t.avatar = String(fd.get('avatar') || '') || null;
