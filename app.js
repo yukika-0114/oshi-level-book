@@ -407,7 +407,7 @@ function renderUsers() {
       <div class="stat"><div class="label">Lv.50 達成</div><div class="stat-row"><span class="value">${done}</span><span class="unit">人</span></div></div>
     </div>
     <div class="toolbar">
-      <input id="search" class="input grow" type="search" placeholder="名前・ID・タグで検索" value="${esc(ui.search)}">
+      <input id="search" class="input grow" type="search" placeholder="名前・IDで検索" value="${esc(ui.search)}">
       <select id="sort" class="input sort-select">${sortOpts}</select>
     </div>
     <p class="muted small" id="count">${list.length} / ${data.users.length} 人</p>
@@ -574,9 +574,9 @@ modal.addEventListener('click', (e) => {
 });
 
 // 小さなシート型ダイアログ（外側をタップすると閉じる）
-function openSheet(html, bind) {
+function openSheet(html, bind, { full = false } = {}) {
   const dlg = document.createElement('dialog');
-  dlg.className = 'sheet';
+  dlg.className = full ? 'sheet full' : 'sheet';
   dlg.innerHTML = `<form class="sheet-body" tabindex="-1" autofocus>${html}</form>`;
   document.body.appendChild(dlg);
   lockScroll();
@@ -596,6 +596,7 @@ function openSheet(html, bind) {
 }
 
 // アプリ内の確認ダイアログ（ブラウザ標準の confirm の代わり）
+const CLOSE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 const CALENDAR_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 const CLOCK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>';
 const LINK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
@@ -822,16 +823,20 @@ function openCalendar(u) {
   const now = startOfToday();
   let y = now.getFullYear(); let m = now.getMonth();
   openSheet(`
+    <div class="sheet-title"><h3>増加カレンダー</h3>
+      <button type="button" class="icon-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
     <div class="cal-head">
       <button type="button" class="icon-btn small" data-cal="-1" aria-label="前の月">&lt;</button>
       <b id="calTitle"></b>
       <button type="button" class="icon-btn small" data-cal="1" aria-label="次の月">&gt;</button>
     </div>
-    <div class="cal-grid cal-week">${WEEKDAYS.map((w) => `<span>${w}</span>`).join('')}</div>
-    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-body" id="calBody">
+      <div class="cal-grid cal-week">${WEEKDAYS.map((w) => `<span>${w}</span>`).join('')}</div>
+      <div class="cal-grid" id="calGrid"></div>
+    </div>
     <div class="cal-total" id="calTotal"></div>
-    <div class="cal-detail" id="calDetail"></div>
-    <div class="row"><button type="button" class="btn" data-sheet-close>閉じる</button></div>`, (dlg) => {
+    <div class="cal-detail" id="calDetail"></div>`, (dlg) => {
+    const body = dlg.querySelector('#calBody');
     const grid = dlg.querySelector('#calGrid');
     const detail = dlg.querySelector('#calDetail');
     const showDetail = (d) => {
@@ -858,12 +863,30 @@ function openCalendar(u) {
       dlg.querySelector('#calTotal').innerHTML = `${m + 1}月の増加 合計 <b>+${num(total)}pt</b>`;
       detail.innerHTML = '';
     };
-    dlg.querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => {
-      m += Number(b.dataset.cal);
+    // 月を移動（スライドの向きに合わせて流れるように切り替え）
+    const shift = (dir) => {
+      m += dir;
       if (m < 0) { m = 11; y--; } else if (m > 11) { m = 0; y++; }
       draw();
-    }));
+      body.animate?.([{ transform: `translateX(${dir * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'ease-out' });
+    };
+    dlg.querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => shift(Number(b.dataset.cal))));
+    // 横スライドで前後の月へ
+    let sx = 0; let sy = 0; let tracking = false; let swiped = false;
+    body.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; tracking = true; swiped = false; });
+    body.addEventListener('pointermove', (e) => {
+      if (!tracking) return;
+      const dx = e.clientX - sx; const dy = e.clientY - sy;
+      if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
+        tracking = false; swiped = true;
+        shift(dx < 0 ? 1 : -1);
+      }
+    });
+    const stop = () => { tracking = false; };
+    body.addEventListener('pointerup', stop);
+    body.addEventListener('pointercancel', stop);
     grid.addEventListener('click', (e) => {
+      if (swiped) { swiped = false; return; } // スライド直後のタップは無視
       const c = e.target.closest('[data-day]');
       if (!c) return;
       grid.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
@@ -871,7 +894,7 @@ function openCalendar(u) {
       showDetail(new Date(y, m, Number(c.dataset.day)));
     });
     draw();
-  });
+  }, { full: true });
 }
 
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
@@ -921,6 +944,7 @@ function openDetailModal(u) {
     <div class="row"><button type="button" class="btn" data-close>閉じる</button></div>`,
   () => false,
   (form) => {
+    form.classList.add('detail');
     const lvEl = form.querySelector('#dLv');
     const show = () => {
       lvEl.textContent = `Lv.${u.level}`;
@@ -969,8 +993,7 @@ function basicFieldsHTML(u) {
       <div class="field"><label>現在ポイント</label>
         <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}"></div>
     </div>
-    <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
-    <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>`;
+    <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>`;
 }
 
 /* スパファン：加入中は毎月 +1,300pt。付与日はスパファン加入日の「前日」の日付（1日加入なら月末） */
@@ -1175,7 +1198,6 @@ function openEditModal(u) {
     t.joined = String(fd.get('joined') || '');
     t.superfan = modalForm.querySelector('input[name="superfan"]:checked')?.value === '1';
     t.superfanSince = t.superfan ? (modalForm.elements.superfanSince.value || todayKey()) : '';
-    t.tags = String(fd.get('tags')).split(/[,、，]/).map((x) => x.trim()).filter(Boolean);
     t.gains = readPace(modalForm);
     t.updatedAt = now;
     if (adding) data.users.push(t);

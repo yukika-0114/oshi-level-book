@@ -545,3 +545,43 @@ input[type=date].input::-webkit-date-and-time-value { text-align: left; }
 .cal-detail-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
 .cal-detail-row b { color: var(--cyan); }
 .cal-detail-row.plan b { color: #ff8aa1; }
+
+/* 詳細モーダル：画面の約 78% の高さで固定し、ページの中身だけをスクロール */
+.modal:has(#modalForm.detail) { height: 78dvh; overflow: hidden; }
+#modalForm.detail { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+#modalForm.detail .lv-hero, #modalForm.detail .page-dots, #modalForm.detail > .row { flex: none; }
+#modalForm.detail .slider { flex: 1; min-height: 0; margin-bottom: 12px; }
+#modalForm.detail .slides { height: 100%; align-items: stretch; }
+#modalForm.detail .slide { overflow-y: auto; overscroll-behavior: contain; }
+#modalForm.detail .info-blocks, #modalForm.detail .level-log, #modalForm.detail .plans { margin-bottom: 0; }
+#modalForm.detail .info-blocks { margin-bottom: 14px; }
+#modalForm.detail #dLevelLog { max-height: none; }
+
+/* シート：横に動かないように */
+.sheet { overflow-x: hidden; touch-action: pan-y; }
+.sheet-body { min-width: 0; }
+.plan-inputs label { min-width: 0; }
+.plan-inputs .input, input[type=time].input { display: block; width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; text-align: left; }
+input[type=time].input::-webkit-date-and-time-value { text-align: left; }
+
+/* 全画面シート（カレンダー）：右上の×で閉じる */
+.sheet.full {
+  width: 100vw; max-width: 100vw; height: 100dvh; max-height: 100dvh; margin: 0;
+  border: 0; border-radius: 0; box-shadow: none;
+}
+.sheet.full .sheet-body {
+  min-height: 100%; box-sizing: border-box; align-content: start;
+  padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
+}
+.sheet-title { display: flex; align-items: center; justify-content: space-between; }
+.sheet.full .cal-cell { min-height: 60px; }
+.sheet.full .cal-cell b { font-size: 10px; }
+.cal-body { touch-action: pan-y; }
+/* カレンダーは画面いっぱいにマスを広げる */
+.sheet.full .sheet-body { display: flex; flex-direction: column; height: 100dvh; gap: 10px; }
+.sheet.full .cal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
+.sheet.full #calGrid { flex: 1; grid-auto-rows: 1fr; }
+.sheet.full .cal-cell { min-height: 0; align-content: center; gap: 4px; }
+.sheet.full .cal-cell span { font-size: 14px; }
+.sheet.full .cal-cell b { font-size: 11px; }
+.sheet.full .cal-detail { flex: none; }
