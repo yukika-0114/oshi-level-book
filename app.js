@@ -42,6 +42,7 @@ function normalize(d) {
     u.level = clamp(Number(u.level) || 0, 0, MAX_LV);
     if (!Array.isArray(u.gains)) u.gains = [];
     if (!Array.isArray(u.plans)) u.plans = [];
+    if (!Array.isArray(u.history)) u.history = [];
   });
   delete d.categories; delete d.self; delete d.history; delete d.table; // レベル表は固定
   d.version = 5;
@@ -225,6 +226,14 @@ function parseDayKey(k) {
 }
 const gainOn = (u, d) => (u.gains || []).reduce((sum, r) => sum + (r.amount > 0 && ruleMatches(r, d) ? r.amount : 0), 0);
 
+// 追加されたポイントの履歴（新しい順・最大 300 件）
+const HISTORY_LIMIT = 300;
+function addHistory(u, entry) {
+  u.history = u.history || [];
+  u.history.unshift({ id: uid(), at: Date.now(), ...entry });
+  if (u.history.length > HISTORY_LIMIT) u.history.length = HISTORY_LIMIT;
+}
+
 function accrueAll() {
   const today = startOfToday();
   const tk = dayKey(today);
@@ -232,25 +241,36 @@ function accrueAll() {
   let changed = false;
   for (const u of data.users) {
     const nk = nowKey();
-    const due = (u.plans || []).filter((pl) => planAt(pl) <= nk);
+    const due = (u.plans || []).filter((pl) => planAt(pl) <= nk && pl.amount > 0)
+      .sort((a, b) => planAt(a).localeCompare(planAt(b)));
     if (u.accruedAt === tk && !due.length) continue;
     const from = parseDayKey(u.accruedAt);
     changed = true;
-    let add = 0;
+    const before = u.level;
+    let pts = curPoints(u);
+    let added = false;
+    // 増加ペース（前回反映した日の翌日〜今日）
     if (from && u.accruedAt !== tk && hasGains(u)) {
+      let add = 0; let days = 0;
       const d = new Date(from);
       for (let i = 0; i < PREDICT_DAYS && d < today; i++) {
         d.setDate(d.getDate() + 1);
-        add += gainOn(u, d);
+        add += gainOn(u, d); days++;
+      }
+      if (add > 0) {
+        pts += add; added = true;
+        addHistory(u, { kind: 'pace', amount: add, label: `増加ペース（${days}日分）`, pts, level: levelFromPoints(pts) });
       }
     }
     u.accruedAt = tk;
-    // 日付が来た追加予定は加算して予定から外す
-    add += due.reduce((sum, pl) => sum + (pl.amount > 0 ? pl.amount : 0), 0);
-    u.plans = (u.plans || []).filter((pl) => planAt(pl) > nk);
-    if (add <= 0) continue;
-    u.points = curPoints(u) + add;
-    const before = u.level;
+    // 日時が来た追加予定は加算して予定から外し、履歴へ
+    for (const pl of due) {
+      pts += pl.amount; added = true;
+      addHistory(u, { kind: 'plan', amount: pl.amount, label: '追加予定', planned: planAt(pl), pts, level: levelFromPoints(pts) });
+    }
+    u.plans = (u.plans || []).filter((pl) => !due.includes(pl) && planAt(pl) > nk);
+    if (!added) continue;
+    u.points = pts;
     u.level = Math.max(u.level, levelFromPoints(u.points));
     if (u.level > before) levelUps.push(`${u.name} が Lv.${u.level} に到達`);
   }
@@ -528,7 +548,31 @@ modal.addEventListener('click', (e) => {
   if (e.clientY < modal.getBoundingClientRect().top) modal.close();
 });
 
+// 小さなシート型ダイアログ（外側をタップすると閉じる）
+function openSheet(html, bind) {
+  const dlg = document.createElement('dialog');
+  dlg.className = 'sheet';
+  dlg.innerHTML = `<form class="sheet-body" tabindex="-1" autofocus>${html}</form>`;
+  document.body.appendChild(dlg);
+  lockScroll();
+  dlg.showModal();
+  let closed = false;
+  const close = () => {
+    if (closed) return;
+    closed = true;
+    dlg.close(); dlg.remove(); unlockScroll();
+  };
+  dlg.addEventListener('click', (e) => { if (e.target === dlg) close(); });
+  dlg.addEventListener('cancel', (e) => { e.preventDefault(); close(); });
+  dlg.querySelector('form').addEventListener('submit', (e) => e.preventDefault());
+  dlg.querySelectorAll('[data-sheet-close]').forEach((b) => b.addEventListener('click', close));
+  bind?.(dlg, close);
+  return close;
+}
+
 // アプリ内の確認ダイアログ（ブラウザ標準の confirm の代わり）
+const CLOCK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>';
+const LINK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
 const PENCIL_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
 const TRASH_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 6h18"/><path d="M8 6V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"/><path d="M19 6l-1 14a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2L5 6"/><path d="M10 11v6M14 11v6"/></svg>';
 function askConfirm({ title, message, ok = 'OK', danger = false }) {
@@ -554,10 +598,6 @@ function askConfirm({ title, message, ok = 'OK', danger = false }) {
     lockScroll();
     dlg.showModal();
   });
-}
-
-function tiktokLink(u) {
-  return u?.handle ? `<a class="btn small" href="https://www.tiktok.com/@${encodeURIComponent(u.handle)}" target="_blank" rel="noopener">TikTokで開く</a>` : '';
 }
 
 // 一覧からタップしたとき：詳細表示（編集ボタンで編集モードへ）
@@ -622,12 +662,6 @@ function planProgressHTML(u, { pts, prev, level }) {
 
 function bindPlans(form, u, onChange) {
   const list = form.querySelector('#planList');
-  const pForm = form.querySelector('#planForm');
-  const openBtn = form.querySelector('#planOpen');
-  const dateEl = form.querySelector('#planDate');
-  const amountEl = form.querySelector('#planAmount');
-  const timeEl = form.querySelector('#planTime');
-  const previewEl = form.querySelector('#planPreview');
   const tomorrow = () => { const d = startOfToday(); d.setDate(d.getDate() + 1); return dayKey(d); };
 
   const renderList = () => {
@@ -645,49 +679,71 @@ function bindPlans(form, u, onChange) {
           <div class="plan-progress">${planProgressHTML(u, row)}</div>
         </div>`;
       }).join('')
-      : '<p class="muted small plan-empty">予定はありません。「追加」から日付とポイントを登録すると、追加後のポイントや次のレベルの達成予定日が表示されます。</p>';
+      : '<p class="muted small plan-empty">予定はありません。「予定を追加」から日付・時刻とポイントを登録すると、追加後のポイントや次のレベルの達成予定日が表示されます。</p>';
   };
-  // 入力中の予定を加えた場合の結果をその場で表示
-  const preview = () => {
-    const amount = Math.round(Number(amountEl.value) || 0);
-    if (amount <= 0 || !dateEl.value) { previewEl.innerHTML = ''; return; }
-    const tmp = { ...u, plans: [...(u.plans || []), { id: 'preview', date: dateEl.value, time: timeEl.value, amount }] };
-    const row = planTimeline(tmp).find((r) => r.plan.id === 'preview');
-    previewEl.innerHTML = row
-      ? `<div class="plan-sub">追加後 <b>${num(row.pts)}pt</b>（Lv.${row.level}）</div>${planProgressHTML(tmp, row)}`
-      : '';
-  };
-  // 追加中は「閉じる・編集」を「キャンセル・追加する」に切り替え、タブとスライドも止める
-  const openForm = () => {
-    form.classList.add('plan-adding');
-    pForm.hidden = false;
-    dateEl.value = tomorrow();
-    timeEl.value = '';
-    amountEl.value = '';
-    previewEl.innerHTML = '';
-  };
-  const closeForm = () => { form.classList.remove('plan-adding'); pForm.hidden = true; };
 
-  dateEl.min = todayKey();
-  openBtn.addEventListener('click', openForm);
-  form.querySelector('#planCancel').addEventListener('click', closeForm);
-  dateEl.addEventListener('input', preview);
-  timeEl.addEventListener('input', preview);
-  amountEl.addEventListener('input', preview);
-  form.querySelector('#planAdd').addEventListener('click', () => {
-    const amount = Math.round(Number(amountEl.value) || 0);
-    if (amount <= 0) { toast('追加するポイントを入力してください'); amountEl.focus(); return; }
-    if (!dateEl.value || dateEl.value < todayKey()) { toast('今日以降の日付を選んでください'); return; }
-    const date = dateEl.value;
-    const time = timeEl.value;
-    u.plans = u.plans || [];
-    u.plans.push({ id: uid(), date, time, amount });
-    closeForm();
-    accrueAll(); // すでに過ぎた日時ならすぐに加算する
-    u.updatedAt = Date.now();
-    save(); render(); onChange();
-    toast(`${date.replace(/-/g, '/')}${time ? ` ${time}` : ''} に +${num(amount)}pt を予定しました`);
+  // 予定の登録はシートで行う（外側タップで閉じる）
+  form.querySelector('#planOpen').addEventListener('click', () => {
+    openSheet(`
+      <h3>追加予定を登録</h3>
+      <div class="plan-inputs">
+        <label><span>日付</span><input class="input" type="date" id="planDate" min="${todayKey()}" value="${tomorrow()}"></label>
+        <label><span>時刻</span><input class="input" type="time" id="planTime"></label>
+      </div>
+      <label class="plan-amount-field"><span>追加するpt</span><input class="input" type="number" inputmode="numeric" min="1" id="planAmount" placeholder="0"></label>
+      <div class="plan-preview" id="planPreview"></div>
+      <div class="row">
+        <button type="button" class="btn" data-sheet-close>キャンセル</button>
+        <button type="submit" class="btn accent" id="planAdd">追加する</button>
+      </div>`, (dlg, close) => {
+      const dateEl = dlg.querySelector('#planDate');
+      const timeEl = dlg.querySelector('#planTime');
+      const amountEl = dlg.querySelector('#planAmount');
+      const previewEl = dlg.querySelector('#planPreview');
+      const preview = () => {
+        const amount = Math.round(Number(amountEl.value) || 0);
+        if (amount <= 0 || !dateEl.value) { previewEl.innerHTML = ''; return; }
+        const tmp = { ...u, plans: [...(u.plans || []), { id: 'preview', date: dateEl.value, time: timeEl.value, amount }] };
+        const row = planTimeline(tmp).find((r) => r.plan.id === 'preview');
+        previewEl.innerHTML = row
+          ? `<div class="plan-sub">追加後 <b>${num(row.pts)}pt</b>（Lv.${row.level}）</div>${planProgressHTML(tmp, row)}`
+          : '';
+        requestAnimationFrame(() => fitOneLine(dlg));
+      };
+      [dateEl, timeEl, amountEl].forEach((el) => el.addEventListener('input', preview));
+      dlg.querySelector('form').addEventListener('submit', () => {
+        const amount = Math.round(Number(amountEl.value) || 0);
+        if (amount <= 0) { toast('追加するポイントを入力してください'); return; }
+        if (!dateEl.value || dateEl.value < todayKey()) { toast('今日以降の日付を選んでください'); return; }
+        const date = dateEl.value; const time = timeEl.value;
+        u.plans = u.plans || [];
+        u.plans.push({ id: uid(), date, time, amount });
+        close();
+        accrueAll(); // すでに過ぎた日時ならすぐに加算する
+        u.updatedAt = Date.now();
+        save(); render(); onChange();
+        toast(`${date.replace(/-/g, '/')}${time ? ` ${time}` : ''} に +${num(amount)}pt を予定しました`);
+      });
+    });
   });
+
+  // 追加されたポイントの履歴
+  form.querySelector('#historyOpen').addEventListener('click', () => {
+    const items = (u.history || []).map((h) => {
+      const d = new Date(h.at);
+      const p2 = (n) => String(n).padStart(2, '0');
+      const when = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+      return `<div class="hist-item">
+        <div class="hist-main"><span>${when}</span><b>+${num(h.amount)}pt</b></div>
+        <div class="hist-sub"><span>${esc(h.label)}</span><span>追加後 ${num(h.pts)}pt（Lv.${h.level}）</span></div>
+      </div>`;
+    }).join('');
+    openSheet(`
+      <h3>追加履歴</h3>
+      <div class="hist-list">${items || '<p class="muted small">まだ履歴はありません。追加予定や増加ペースで加算されると、ここに記録されます。</p>'}</div>
+      <div class="row"><button type="button" class="btn" data-sheet-close>閉じる</button></div>`);
+  });
+
   list.addEventListener('click', (e) => {
     const del = e.target.closest('[data-pdel]');
     if (!del) return;
@@ -706,72 +762,50 @@ function gainsSummary(u) {
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
 function openDetailModal(u) {
   const rows = [
-    ['累計ポイント', `<input class="input kv-input" id="dPts" type="number" inputmode="numeric" min="0" placeholder="-">`],
+    ['累計ポイント', '<b id="dPts"></b>'],
     ['増加ペース', `<span class="small">${gainsSummary(u)}</span>`],
   ];
+  const tiktok = u.handle
+    ? `<a class="icon-btn" href="https://www.tiktok.com/@${encodeURIComponent(u.handle)}" target="_blank" rel="noopener" aria-label="TikTokで開く" title="TikTokで開く">${LINK_ICON}</a>` : '';
   openModal(`
     <div class="lv-hero">
       <div class="lv-hero-top">
         ${avatarHTML(u, 'lg')}
         <div class="lv-hero-main">
           <div class="lv-hero-title" id="dLv"></div>
-          <div class="lv-hero-name"><span class="name-chip">${esc(u.name)}</span>${u.handle ? `<span class="muted small">@${esc(u.handle)}</span>` : ''}</div>
+          <div class="name-chip">${esc(u.name)}</div>
+          ${u.handle ? `<div class="hero-id">@${esc(u.handle)}</div>` : ''}
         </div>
-        <div class="head-actions">${tiktokLink(u)}<button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button></div>
+        <div class="head-actions col"><button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button>${tiktok}</div>
       </div>
       <div class="lv-hero-bar"><i id="dBar"></i><span id="dBarText"></span></div>
     </div>
     <div class="page-dots top" role="tablist">
       <button type="button" data-slide="0" class="active" aria-label="詳細"></button>
-      <button type="button" data-slide="1" aria-label="追加"></button>
+      <button type="button" data-slide="1" aria-label="追加予定"></button>
     </div>
     <div class="slider draggable">
       <div class="slides">
-    <div class="slide">
-    <dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
-    <div class="stages" id="dStages"></div>
-    </div>
-    <div class="slide">
-    <div class="quick-add">
-      <div class="plans-head"><span>ポイントを追加</span></div>
-      <div class="quick-row">
-        <input class="input" type="number" inputmode="numeric" min="1" id="quickAmount" placeholder="追加するpt">
-        <button type="button" class="btn accent" id="quickAdd">追加</button>
-      </div>
-      <div class="plan-sub" id="quickPreview"></div>
-    </div>
-    <div class="plans">
-      <div class="plans-head"><span>追加予定</span><button type="button" class="btn small" id="planOpen">予定を追加</button></div>
-      <div class="plan-form" id="planForm" hidden>
-        <div class="plan-form-title">新しい予定</div>
-        <div class="plan-inputs">
-          <label><span>日付</span><input class="input" type="date" id="planDate"></label>
-          <label><span>時刻</span><input class="input" type="time" id="planTime"></label>
+        <div class="slide">
+          <dl class="kv">${rows.map(([k, v]) => `<div><dt>${k}</dt><dd>${v}</dd></div>`).join('')}</dl>
+          <div class="stages" id="dStages"></div>
         </div>
-        <label class="plan-amount-field"><span>追加するpt</span><input class="input" type="number" inputmode="numeric" min="1" id="planAmount" placeholder="0"></label>
-        <div class="plan-preview" id="planPreview"></div>
+        <div class="slide">
+          <div class="plans">
+            <div class="plans-head"><span>追加予定</span>
+              <span class="plans-actions">
+                <button type="button" class="btn small" id="planOpen">予定を追加</button>
+                <button type="button" class="icon-btn small" id="historyOpen" aria-label="追加履歴" title="追加履歴">${CLOCK_ICON}</button>
+              </span></div>
+            <div id="planList"></div>
+          </div>
+        </div>
       </div>
-      <div id="planList"></div>
     </div>
-    </div>
-      </div>
-    </div>
-    <div class="row" id="detailFoot">
-      <button type="button" class="btn foot-normal" data-close>閉じる</button>
-      <button type="button" class="btn foot-adding" id="planCancel">キャンセル</button>
-      <button type="button" class="btn accent foot-adding" id="planAdd">追加する</button>
-    </div>`,
-  // Enter キーではモーダルを閉じず、ポイント入力を確定する
-  () => {
-    const active = document.activeElement;
-    if (modalForm.classList.contains('plan-adding')) modalForm.querySelector('#planAdd').click();
-    else if (active?.id === 'quickAmount') modalForm.querySelector('#quickAdd').click();
-    else modalForm.querySelector('#dPts')?.blur();
-    return false;
-  },
+    <div class="row"><button type="button" class="btn" data-close>閉じる</button></div>`,
+  () => false,
   (form) => {
     const lvEl = form.querySelector('#dLv');
-    const ptEl = form.querySelector('#dPts');
     const show = () => {
       lvEl.textContent = `レベル${u.level}`;
       // ゲージは「今のレベル → 次のレベル」の進み具合、数字は累計ポイント / 次のレベルの累計
@@ -786,41 +820,13 @@ function openDetailModal(u) {
         bar.style.width = `${clamp(((pts - from) / Math.max(1, need - from)) * 100, 0, 100)}%`;
         barText.textContent = `${num(pts)}/${num(need)}`;
       }
-      ptEl.value = hasPoints(u) ? u.points : '';
+      form.querySelector('#dPts').textContent = hasPoints(u) ? `${num(u.points)}pt` : '-';
       form.querySelector('#dStages').innerHTML = stagesHTML(u);
       renderPlans();
     };
     const renderPlans = bindPlans(form, u, () => show());
     show();
-    refreshOpenDetail = () => { if (modal.open && form.contains(lvEl)) { show(); quickUpdate(); } };
-
-    // ポイントをその場で追加 → 詳細の累計ポイント・メンレベに反映
-    const quickEl = form.querySelector('#quickAmount');
-    const quickPreview = form.querySelector('#quickPreview');
-    const quickUpdate = () => {
-      const amount = Math.round(Number(quickEl.value) || 0);
-      quickPreview.innerHTML = amount > 0
-        ? `追加後 <b>${num(curPoints(u) + amount)}pt</b>（Lv.${levelFromPoints(curPoints(u) + amount)}）`
-        : `現在 <b>${num(curPoints(u))}pt</b>（Lv.${u.level || '-'}）`;
-    };
-    quickUpdate();
-    quickEl.addEventListener('input', quickUpdate);
-    form.querySelector('#quickAdd').addEventListener('click', () => {
-      const amount = Math.round(Number(quickEl.value) || 0);
-      if (amount <= 0) { toast('追加するポイントを入力してください'); return; }
-      const before = u.level;
-      setPoints(u, curPoints(u) + amount);
-      quickEl.value = '';
-      quickEl.blur();
-      save(); render(); show(); quickUpdate();
-      toast(`+${num(amount)}pt 追加しました${u.level !== before ? `（Lv.${u.level} に到達）` : ''}`);
-    });
-    ptEl.addEventListener('change', () => {
-      const before = u.level;
-      setPoints(u, ptEl.value);
-      save(); render(); show();
-      toast(u.level !== before ? `ポイントを保存しました（Lv.${u.level} に変更）` : 'ポイントを保存しました');
-    });
+    refreshOpenDetail = () => { if (modal.open && form.contains(lvEl)) show(); };
     form.querySelector('#toEdit').addEventListener('click', () => openEditModal(u));
     // 「詳細」と「追加予定」を横スライドで切り替え（同じ方向に続けても回り込む）
     const tabs = form.querySelectorAll('[data-slide]');
@@ -843,8 +849,8 @@ function basicFieldsHTML(u) {
       </div>
       <input type="hidden" name="avatar" value="${esc(u?.avatar || '')}">
     </div>
-    <div class="field"><label>ライバー名</label><input class="input" name="name" required maxlength="60" value="${esc(u?.name)}" autocomplete="off"></div>
-    <div class="field"><label>ID</label><input class="input" name="handle" maxlength="60" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
+    <div class="field"><label>ライバー名</label><input class="input" name="name" required maxlength="15" value="${esc(u?.name)}" autocomplete="off"></div>
+    <div class="field"><label>ID</label><input class="input" name="handle" maxlength="24" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
     <div class="auto-level"><span class="muted">メンレベ</span><b id="autoLv">Lv.${u?.level || '-'}</b></div>
     <div class="field"><label>現在ポイント</label>
       <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}">
@@ -940,7 +946,7 @@ function setupSlider(form, { drag, onChange }) {
   if (drag) {
     let sx = 0; let sy = 0; let dx = 0; let dir = 0; let active = false; let decided = false;
     slider.addEventListener('pointerdown', (e) => {
-      if (busy || e.button !== 0 || form.classList.contains('plan-adding') || e.target.closest(`input,select,textarea,${REPEAT_BTN}`)) return;
+      if (busy || e.button !== 0 || e.target.closest(`input,select,textarea,${REPEAT_BTN}`)) return;
       sx = e.clientX; sy = e.clientY; dx = 0; dir = 0; active = true; decided = false;
     });
     slider.addEventListener('pointermove', (e) => {
