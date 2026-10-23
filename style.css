@@ -516,35 +516,8 @@ input[type=date].input::-webkit-date-and-time-value { text-align: left; }
 /* 詳細：レベルアップ記録 */
 .level-log { margin: 0 0 16px; }
 #dLevelLog { max-height: 210px; overflow-y: auto; }
-.log-item { display: flex; align-items: baseline; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
-.log-item:last-child { border-bottom: 0; }
-.log-item b { color: var(--cyan); }
 .log-date { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
 
-/* 増加カレンダー */
-.cal-head { display: flex; align-items: center; justify-content: space-between; }
-.cal-head b { font-size: 16px; }
-.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
-.cal-week span { text-align: center; font-size: 11px; color: var(--muted); }
-.cal-cell {
-  display: grid; justify-items: center; align-content: start; gap: 1px; min-height: 44px; padding: 4px 0;
-  border: 1px solid transparent; border-radius: 8px; background: var(--surface2); color: var(--text); cursor: pointer; min-width: 0;
-}
-.cal-cell.empty { background: none; cursor: default; }
-.cal-cell span { font-size: 12px; }
-.cal-cell b { font-size: 9px; color: var(--cyan); white-space: nowrap; letter-spacing: -.02em; }
-.cal-cell.plan { border-color: var(--pink); }
-.cal-cell.plan b { color: #ff8aa1; }
-.cal-cell.today span { color: #000; background: var(--cyan); border-radius: 999px; padding: 0 5px; font-weight: 800; }
-.cal-cell.sel { border-color: var(--cyan); }
-.cal-total { font-size: 13px; color: var(--muted); text-align: right; }
-.cal-total b { color: var(--cyan); }
-.cal-detail:empty { display: none; }
-.cal-detail { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
-.cal-detail-title { font-size: 13px; font-weight: 700; }
-.cal-detail-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
-.cal-detail-row b { color: var(--cyan); }
-.cal-detail-row.plan b { color: #ff8aa1; }
 
 /* 詳細モーダル：画面の約 78% の高さで固定し、ページの中身だけをスクロール */
 .modal:has(#modalForm.detail) { height: 78dvh; overflow: hidden; }
@@ -574,14 +547,50 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
   padding: calc(env(safe-area-inset-top, 0px) + 14px) 16px calc(env(safe-area-inset-bottom, 0px) + 16px);
 }
 .sheet-title { display: flex; align-items: center; justify-content: space-between; }
-.sheet.full .cal-cell { min-height: 60px; }
-.sheet.full .cal-cell b { font-size: 10px; }
+
+/* 増加カレンダー（シンプルな月表示） */
+.cal-head { display: flex; align-items: baseline; justify-content: space-between; padding: 4px 2px 0; }
+.cal-head b { font-size: 20px; letter-spacing: .02em; }
 .cal-body { touch-action: pan-y; }
-/* カレンダーは画面いっぱいにマスを広げる */
-.sheet.full .sheet-body { display: flex; flex-direction: column; height: 100dvh; gap: 10px; }
-.sheet.full .cal-body { flex: 1; min-height: 0; display: flex; flex-direction: column; gap: 4px; }
-.sheet.full #calGrid { flex: 1; grid-auto-rows: 1fr; }
-.sheet.full .cal-cell { min-height: 0; align-content: center; gap: 4px; }
-.sheet.full .cal-cell span { font-size: 14px; }
-.sheet.full .cal-cell b { font-size: 11px; }
-.sheet.full .cal-detail { flex: none; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); }
+.cal-week { padding-bottom: 6px; border-bottom: 1px solid var(--border); }
+.cal-week span { text-align: center; font-size: 11px; color: var(--muted); }
+.cal-week span:first-child { color: #ff8aa1; }
+.cal-week span:last-child { color: #7fb8ff; }
+#calGrid > * { border-bottom: 1px solid var(--border); }
+.cal-cell {
+  position: relative; display: flex; flex-direction: column; align-items: center; gap: 3px;
+  height: 58px; padding: 7px 0 0; border: 0; background: none; color: var(--text); cursor: pointer; min-width: 0;
+}
+.cal-cell.empty { cursor: default; }
+.cal-day { display: grid; place-items: center; width: 26px; height: 26px; border-radius: 50%; font-size: 14px; }
+.cal-cell b { font-size: 10px; font-weight: 700; color: var(--cyan); white-space: nowrap; letter-spacing: -.02em; }
+.cal-dot { position: absolute; top: 7px; left: calc(50% + 12px); width: 6px; height: 6px; border-radius: 50%; background: transparent; }
+.cal-cell.plan .cal-dot { background: var(--pink); }
+.cal-cell.plan b { color: #ff8aa1; }
+.cal-cell.today .cal-day { background: var(--cyan); color: #000; font-weight: 800; }
+.cal-cell.sel .cal-day { box-shadow: 0 0 0 2px var(--text); }
+.cal-total { font-size: 13px; color: var(--muted); text-align: right; }
+.cal-total b { color: var(--cyan); }
+.cal-detail:empty { display: none; }
+.cal-detail { display: grid; gap: 6px; padding: 12px 14px; border-radius: 12px; background: var(--surface2); }
+.cal-detail-title { font-size: 13px; font-weight: 700; }
+.cal-detail-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.cal-detail-row b { color: var(--cyan); }
+.cal-detail-row.plan b { color: #ff8aa1; }
+.sheet.full .sheet-body { gap: 12px; }
+
+/* 予定登録：日付と時刻の入力欄の高さをそろえる */
+.plan-inputs .input { height: 44px; box-sizing: border-box; padding-top: 0; padding-bottom: 0; line-height: 44px; }
+
+/* 軌跡（タイムライン） */
+#dLevelLog { position: relative; padding-left: 4px; }
+.log-item { position: relative; display: flex; align-items: baseline; gap: 8px; padding: 9px 0 9px 22px; font-size: 14px; }
+.log-item::before { content: ""; position: absolute; left: 5px; top: 0; bottom: 0; width: 2px; background: var(--border); }
+.log-item:first-child::before { top: 50%; }
+.log-item:last-child::before { bottom: 50%; }
+.log-item:only-child::before { display: none; }
+.log-dot { position: absolute; left: 0; top: 50%; width: 12px; height: 12px; margin-top: -6px; border-radius: 50%; background: var(--surface); border: 2px solid var(--cyan); box-sizing: border-box; }
+.log-item:first-child .log-dot { background: var(--cyan); }
+.log-item b { color: var(--cyan); }
+.log-date { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }

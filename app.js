@@ -796,11 +796,11 @@ function joinedInfoHTML(u) {
 
 function levelLogHTML(u) {
   const log = u.levelLog || [];
-  if (!log.length) return '<p class="muted small plan-empty">まだ記録はありません。レベルが上がるとここに記録されます。</p>';
+  if (!log.length) return '<p class="muted small plan-empty">まだ軌跡はありません。レベルが上がるとここに記録されます。</p>';
   const p2 = (n) => String(n).padStart(2, '0');
   return log.map((e) => {
     const d = new Date(e.at);
-    return `<div class="log-item"><b>Lv.${e.level}</b><span class="muted">到達</span>
+    return `<div class="log-item"><i class="log-dot"></i><b>Lv.${e.level}</b><span class="muted">到達</span>
       <span class="log-date">${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}</span></div>`;
   }).join('');
 }
@@ -825,11 +825,7 @@ function openCalendar(u) {
   openSheet(`
     <div class="sheet-title"><h3>増加カレンダー</h3>
       <button type="button" class="icon-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
-    <div class="cal-head">
-      <button type="button" class="icon-btn small" data-cal="-1" aria-label="前の月">&lt;</button>
-      <b id="calTitle"></b>
-      <button type="button" class="icon-btn small" data-cal="1" aria-label="次の月">&gt;</button>
-    </div>
+    <div class="cal-head"><b id="calTitle"></b><span class="muted tiny">左右にスライドで月を切り替え</span></div>
     <div class="cal-body" id="calBody">
       <div class="cal-grid cal-week">${WEEKDAYS.map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="cal-grid" id="calGrid"></div>
@@ -857,7 +853,7 @@ function openCalendar(u) {
         const sum = items.reduce((a, it) => a + it.amount, 0);
         total += sum;
         const cls = ['cal-cell', sum ? 'on' : '', items.some((it) => it.plan) ? 'plan' : '', d.getTime() === now.getTime() ? 'today' : ''].join(' ');
-        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span>${day}</span><b>${sum ? `+${num(sum)}` : ''}</b></button>`);
+        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : ''}</b><i class="cal-dot"></i></button>`);
       }
       grid.innerHTML = cells.join('');
       dlg.querySelector('#calTotal').innerHTML = `${m + 1}月の増加 合計 <b>+${num(total)}pt</b>`;
@@ -870,7 +866,6 @@ function openCalendar(u) {
       draw();
       body.animate?.([{ transform: `translateX(${dir * 40}px)`, opacity: 0 }, { transform: 'none', opacity: 1 }], { duration: 200, easing: 'ease-out' });
     };
-    dlg.querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => shift(Number(b.dataset.cal))));
     // 横スライドで前後の月へ
     let sx = 0; let sy = 0; let tracking = false; let swiped = false;
     body.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; tracking = true; swiped = false; });
@@ -923,7 +918,7 @@ function openDetailModal(u) {
         <div class="slide">
           <div class="info-blocks" id="dInfo"></div>
           <div class="level-log">
-            <div class="plans-head"><span>レベルアップ記録</span></div>
+            <div class="plans-head"><span>軌跡</span></div>
             <div id="dLevelLog"></div>
           </div>
         </div>
