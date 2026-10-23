@@ -780,14 +780,26 @@ function openDetailModal(u) {
       </div>
       <div class="lv-hero-bar"><i id="dBar"></i><span id="dBarText"></span></div>
     </div>
-    <div class="stages" id="dStages"></div>
-    <div class="plans">
-      <div class="plans-head"><span>追加予定</span>
-        <span class="plans-actions">
-          <button type="button" class="btn small" id="planOpen">予定を追加</button>
-          <button type="button" class="icon-btn small" id="historyOpen" aria-label="追加履歴" title="追加履歴">${CLOCK_ICON}</button>
-        </span></div>
-      <div id="planList"></div>
+    <div class="page-dots top" role="tablist">
+      <button type="button" data-slide="0" class="active" aria-label="次のレベル"></button>
+      <button type="button" data-slide="1" aria-label="追加予定"></button>
+    </div>
+    <div class="slider draggable">
+      <div class="slides">
+        <div class="slide">
+          <div class="stages" id="dStages"></div>
+        </div>
+        <div class="slide">
+          <div class="plans">
+            <div class="plans-head"><span>追加予定</span>
+              <span class="plans-actions">
+                <button type="button" class="btn small" id="planOpen">予定を追加</button>
+                <button type="button" class="icon-btn small" id="historyOpen" aria-label="追加履歴" title="追加履歴">${CLOCK_ICON}</button>
+              </span></div>
+            <div id="planList"></div>
+          </div>
+        </div>
+      </div>
     </div>
     <div class="row"><button type="button" class="btn" data-close>閉じる</button></div>`,
   () => false,
@@ -814,6 +826,13 @@ function openDetailModal(u) {
     show();
     refreshOpenDetail = () => { if (modal.open && form.contains(lvEl)) show(); };
     form.querySelector('#toEdit').addEventListener('click', () => openEditModal(u));
+    // 「次のレベル」と「追加予定」を横スライドで切り替え（同じ方向に続けても回り込む）
+    const tabs = form.querySelectorAll('[data-slide]');
+    const slider = setupSlider(form, {
+      drag: true,
+      onChange: (i) => tabs.forEach((b) => b.classList.toggle('active', Number(b.dataset.slide) === i)),
+    });
+    tabs.forEach((b) => b.addEventListener('click', () => slider.to(Number(b.dataset.slide))));
   });
 }
 
