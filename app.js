@@ -117,7 +117,11 @@ function ruleLabel(r) {
 }
 const startOfToday = () => { const d = new Date(); d.setHours(0, 0, 0, 0); return d; };
 const hasGains = (u) => (u.gains || []).some((r) => r.amount > 0);
-/* 追加予定 plans[] = { id, date: 'YYYY-MM-DD', amount }（指定日に一度だけ加算） */
+/* 追加予定 plans[] = { id, date: 'YYYY-MM-DD', time: 'HH:MM'（省略時 00:00）, amount }
+ * 指定日時になったら一度だけ累計ポイントに加算する */
+const planAt = (pl) => `${pl.date}T${pl.time || '00:00'}`;
+const nowKey = () => { const d = new Date(); return `${dayKey(d)}T${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`; };
+const todaysPlansTotal = (u) => (u.plans || []).reduce((sum, pl) => sum + (pl.amount > 0 && pl.date === todayKey() ? pl.amount : 0), 0);
 const hasPlans = (u) => (u.plans || []).some((pl) => pl.amount > 0);
 const hasGrowth = (u) => hasGains(u) || hasPlans(u);
 function plansByDay(u) {
@@ -129,7 +133,7 @@ function plansByDay(u) {
 // 必要累計ポイントの配列 → 各到達予定日（Date / 到達済みは今日 / 不明は undefined）
 const predictCache = new Map();
 function predict(u, needs) {
-  const key = `${todayKey()}|${curPoints(u)}|${JSON.stringify(u.gains || [])}|${JSON.stringify(u.plans || [])}|${needs.join(',')}`;
+  const key = `${nowKey()}|${curPoints(u)}|${JSON.stringify(u.gains || [])}|${JSON.stringify(u.plans || [])}|${needs.join(',')}`;
   if (predictCache.has(key)) return predictCache.get(key);
   if (predictCache.size > 500) predictCache.clear();
   const result = predictRaw(u, needs);
@@ -138,7 +142,7 @@ function predict(u, needs) {
 }
 function predictRaw(u, needs) {
   const result = new Map();
-  let pts = curPoints(u);
+  let pts = curPoints(u) + todaysPlansTotal(u);
   const today = startOfToday();
   const pending = [...new Set(needs)].sort((a, b) => a - b).filter((n) => {
     if (pts >= n) { result.set(n, today); return false; }
@@ -160,13 +164,21 @@ function predictRaw(u, needs) {
 }
 // 追加予定ごとの「加算後の累計ポイント・レベル」（増加ペースも含めて日ごとに積み上げる）
 function planTimeline(u) {
-  const plans = [...(u.plans || [])].filter((pl) => pl.amount > 0).sort((a, b) => a.date.localeCompare(b.date));
+  const plans = [...(u.plans || [])].filter((pl) => pl.amount > 0).sort((a, b) => planAt(a).localeCompare(planAt(b)));
   if (!plans.length) return [];
   let pts = curPoints(u);
   const out = [];
   const d = startOfToday();
   const last = plans[plans.length - 1].date;
   let idx = 0;
+  // 今日このあとの時刻の予定（今日の増加ペースは反映済み）
+  const today = dayKey(d);
+  while (idx < plans.length && plans[idx].date === today) {
+    const before = levelFromPoints(pts);
+    pts += plans[idx].amount;
+    out.push({ plan: plans[idx], pts, prev: pts - plans[idx].amount, level: levelFromPoints(pts), before });
+    idx++;
+  }
   for (let i = 0; i < PREDICT_DAYS && dayKey(d) < last; i++) {
     d.setDate(d.getDate() + 1);
     const before = levelFromPoints(pts);
@@ -219,7 +231,8 @@ function accrueAll() {
   const levelUps = [];
   let changed = false;
   for (const u of data.users) {
-    const due = (u.plans || []).filter((pl) => pl.date <= tk);
+    const nk = nowKey();
+    const due = (u.plans || []).filter((pl) => planAt(pl) <= nk);
     if (u.accruedAt === tk && !due.length) continue;
     const from = parseDayKey(u.accruedAt);
     changed = true;
@@ -234,7 +247,7 @@ function accrueAll() {
     u.accruedAt = tk;
     // 日付が来た追加予定は加算して予定から外す
     add += due.reduce((sum, pl) => sum + (pl.amount > 0 ? pl.amount : 0), 0);
-    u.plans = (u.plans || []).filter((pl) => pl.date > tk);
+    u.plans = (u.plans || []).filter((pl) => planAt(pl) > nk);
     if (add <= 0) continue;
     u.points = curPoints(u) + add;
     const before = u.level;
@@ -593,6 +606,7 @@ function bindPlans(form, u, onChange) {
   const openBtn = form.querySelector('#planOpen');
   const dateEl = form.querySelector('#planDate');
   const amountEl = form.querySelector('#planAmount');
+  const timeEl = form.querySelector('#planTime');
   const previewEl = form.querySelector('#planPreview');
   const tomorrow = () => { const d = startOfToday(); d.setDate(d.getDate() + 1); return dayKey(d); };
 
@@ -603,7 +617,7 @@ function bindPlans(form, u, onChange) {
         const d = parseDayKey(row.plan.date);
         return `<div class="plan-item">
           <div class="plan-main">
-            <span class="plan-date">${fmtYMD(d)}<span class="muted small">（${fmtAfter(d)}）</span></span>
+            <span class="plan-date">${fmtYMD(d)}${row.plan.time ? ` ${row.plan.time}` : ''}<span class="muted small">（${fmtAfter(d)}）</span></span>
             <span class="plan-amount"><b>+${num(row.plan.amount)}pt</b>
               <button type="button" class="plan-del" data-pdel="${esc(row.plan.id)}" aria-label="削除">${TRASH_ICON}</button></span>
           </div>
@@ -617,7 +631,7 @@ function bindPlans(form, u, onChange) {
   const preview = () => {
     const amount = Math.round(Number(amountEl.value) || 0);
     if (amount <= 0 || !dateEl.value) { previewEl.innerHTML = ''; return; }
-    const tmp = { ...u, plans: [...(u.plans || []), { id: 'preview', date: dateEl.value, amount }] };
+    const tmp = { ...u, plans: [...(u.plans || []), { id: 'preview', date: dateEl.value, time: timeEl.value, amount }] };
     const row = planTimeline(tmp).find((r) => r.plan.id === 'preview');
     previewEl.innerHTML = row
       ? `<div class="plan-sub">追加後 <b>${num(row.pts)}pt</b>（Lv.${row.level}）</div>${planProgressHTML(tmp, row)}`
@@ -628,6 +642,7 @@ function bindPlans(form, u, onChange) {
     form.classList.add('plan-adding');
     pForm.hidden = false;
     dateEl.value = tomorrow();
+    timeEl.value = '';
     amountEl.value = '';
     previewEl.innerHTML = '';
   };
@@ -637,19 +652,21 @@ function bindPlans(form, u, onChange) {
   openBtn.addEventListener('click', openForm);
   form.querySelector('#planCancel').addEventListener('click', closeForm);
   dateEl.addEventListener('input', preview);
+  timeEl.addEventListener('input', preview);
   amountEl.addEventListener('input', preview);
   form.querySelector('#planAdd').addEventListener('click', () => {
     const amount = Math.round(Number(amountEl.value) || 0);
     if (amount <= 0) { toast('追加するポイントを入力してください'); amountEl.focus(); return; }
     if (!dateEl.value || dateEl.value < todayKey()) { toast('今日以降の日付を選んでください'); return; }
     const date = dateEl.value;
+    const time = timeEl.value;
     u.plans = u.plans || [];
-    u.plans.push({ id: uid(), date, amount });
+    u.plans.push({ id: uid(), date, time, amount });
     closeForm();
-    accrueAll(); // 今日の日付ならすぐに加算する
+    accrueAll(); // すでに過ぎた日時ならすぐに加算する
     u.updatedAt = Date.now();
     save(); render(); onChange();
-    toast(`${date.replace(/-/g, '/')} に +${num(amount)}pt を予定しました`);
+    toast(`${date.replace(/-/g, '/')}${time ? ` ${time}` : ''} に +${num(amount)}pt を予定しました`);
   });
   list.addEventListener('click', (e) => {
     const del = e.target.closest('[data-pdel]');
@@ -666,12 +683,10 @@ function gainsSummary(u) {
   return rs.length ? rs.map((r) => `${ruleLabel(r)} +${num(r.amount)}pt`).join('<br>') : '<span class="muted">未設定</span>';
 }
 
+let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
 function openDetailModal(u) {
   const rows = [
-    ['メンレベ', `<div class="kv-step">
-      <button type="button" data-dstep="-1" aria-label="レベルを下げる">−</button>
-      <span id="dLv"></span>
-      <button type="button" data-dstep="1" aria-label="レベルを上げる">＋</button></div>`],
+    ['メンレベ', '<span id="dLv"></span>'],
     ['累計ポイント', `<input class="input kv-input" id="dPts" type="number" inputmode="numeric" min="0" placeholder="-">`],
     ['増加ペース', `<span class="small">${gainsSummary(u)}</span>`],
   ];
@@ -680,7 +695,7 @@ function openDetailModal(u) {
       <div class="head-actions">${tiktokLink(u)}<button type="button" class="icon-btn" id="toEdit" aria-label="編集" title="編集">${PENCIL_ICON}</button></div></div>
     <div class="page-dots top" role="tablist">
       <button type="button" data-slide="0" class="active" aria-label="詳細"></button>
-      <button type="button" data-slide="1" aria-label="追加予定"></button>
+      <button type="button" data-slide="1" aria-label="追加"></button>
     </div>
     <div class="slider draggable">
       <div class="slides">
@@ -689,14 +704,23 @@ function openDetailModal(u) {
     <div class="stages" id="dStages"></div>
     </div>
     <div class="slide">
+    <div class="quick-add">
+      <div class="plans-head"><span>ポイントを追加</span></div>
+      <div class="quick-row">
+        <input class="input" type="number" inputmode="numeric" min="1" id="quickAmount" placeholder="追加するpt">
+        <button type="button" class="btn accent" id="quickAdd">追加</button>
+      </div>
+      <div class="plan-sub" id="quickPreview"></div>
+    </div>
     <div class="plans">
-      <div class="plans-head"><span>予定一覧</span><button type="button" class="btn small" id="planOpen">追加</button></div>
+      <div class="plans-head"><span>追加予定</span><button type="button" class="btn small" id="planOpen">予定を追加</button></div>
       <div class="plan-form" id="planForm" hidden>
         <div class="plan-form-title">新しい予定</div>
         <div class="plan-inputs">
           <label><span>日付</span><input class="input" type="date" id="planDate"></label>
-          <label><span>追加するpt</span><input class="input" type="number" inputmode="numeric" min="1" id="planAmount" placeholder="0"></label>
+          <label><span>時刻</span><input class="input" type="time" id="planTime"></label>
         </div>
+        <label class="plan-amount-field"><span>追加するpt</span><input class="input" type="number" inputmode="numeric" min="1" id="planAmount" placeholder="0"></label>
         <div class="plan-preview" id="planPreview"></div>
       </div>
       <div id="planList"></div>
@@ -711,7 +735,9 @@ function openDetailModal(u) {
     </div>`,
   // Enter キーではモーダルを閉じず、ポイント入力を確定する
   () => {
+    const active = document.activeElement;
     if (modalForm.classList.contains('plan-adding')) modalForm.querySelector('#planAdd').click();
+    else if (active?.id === 'quickAmount') modalForm.querySelector('#quickAdd').click();
     else modalForm.querySelector('#dPts')?.blur();
     return false;
   },
@@ -726,10 +752,29 @@ function openDetailModal(u) {
     };
     const renderPlans = bindPlans(form, u, () => show());
     show();
-    form.querySelectorAll('[data-dstep]').forEach((b) => b.addEventListener('click', () => {
-      if (!setLevel(u, u.level + Number(b.dataset.dstep))) return;
-      save(); render(); show();
-    }));
+    refreshOpenDetail = () => { if (modal.open && form.contains(lvEl)) { show(); quickUpdate(); } };
+
+    // ポイントをその場で追加 → 詳細の累計ポイント・メンレベに反映
+    const quickEl = form.querySelector('#quickAmount');
+    const quickPreview = form.querySelector('#quickPreview');
+    const quickUpdate = () => {
+      const amount = Math.round(Number(quickEl.value) || 0);
+      quickPreview.innerHTML = amount > 0
+        ? `追加後 <b>${num(curPoints(u) + amount)}pt</b>（Lv.${levelFromPoints(curPoints(u) + amount)}）`
+        : `現在 <b>${num(curPoints(u))}pt</b>（Lv.${u.level || '-'}）`;
+    };
+    quickUpdate();
+    quickEl.addEventListener('input', quickUpdate);
+    form.querySelector('#quickAdd').addEventListener('click', () => {
+      const amount = Math.round(Number(quickEl.value) || 0);
+      if (amount <= 0) { toast('追加するポイントを入力してください'); return; }
+      const before = u.level;
+      setPoints(u, curPoints(u) + amount);
+      quickEl.value = '';
+      quickEl.blur();
+      save(); render(); show(); quickUpdate();
+      toast(`+${num(amount)}pt 追加しました${u.level !== before ? `（Lv.${u.level} に到達）` : ''}`);
+    });
     ptEl.addEventListener('change', () => {
       const before = u.level;
       setPoints(u, ptEl.value);
@@ -760,10 +805,10 @@ function basicFieldsHTML(u) {
     </div>
     <div class="field"><label>ライバー名</label><input class="input" name="name" required maxlength="60" value="${esc(u?.name)}" autocomplete="off"></div>
     <div class="field"><label>ID</label><input class="input" name="handle" maxlength="60" value="${esc(u?.handle)}" autocomplete="off" autocapitalize="off"></div>
+    <div class="auto-level"><span class="muted">メンレベ</span><b id="autoLv">Lv.${u?.level || '-'}</b></div>
     <div class="field"><label>現在ポイント</label>
       <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}">
     </div>
-    <div class="auto-level"><span class="muted">メンレベ</span><b id="autoLv">Lv.${u?.level || '-'}</b><span class="muted small">ポイントから自動で反映</span></div>
     <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
     <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>`;
 }
@@ -1254,6 +1299,6 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 accrueAll();
 render();
 // アプリを開いたまま日付が変わった場合や、バックグラウンドから戻ったときにも加算する
-const accrueAndRefresh = () => { if (accrueAll()) render(); };
+const accrueAndRefresh = () => { if (accrueAll()) { render(); refreshOpenDetail?.(); } };
 setInterval(accrueAndRefresh, 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) accrueAndRefresh(); });

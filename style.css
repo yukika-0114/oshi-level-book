@@ -428,3 +428,12 @@ input, textarea { -webkit-user-select: text; user-select: text; }
 .auto-level { display: flex; align-items: baseline; gap: 8px; margin: -4px 0 14px; }
 .auto-level b { font-size: 18px; color: var(--cyan); }
 .auto-level .small { margin-left: auto; }
+
+/* 追加ページ：ポイントをその場で追加 */
+.quick-add { margin: 0 0 18px; }
+.quick-row { display: flex; gap: 8px; margin-top: 10px; }
+.quick-row .input { flex: 1; min-width: 0; }
+.quick-row .btn { flex: none; padding-inline: 20px; }
+#quickPreview { margin-top: 6px; }
+.plan-amount-field { display: grid; gap: 4px; font-size: 12px; color: var(--muted); }
+.plan-adding .quick-add { opacity: .35; pointer-events: none; }
