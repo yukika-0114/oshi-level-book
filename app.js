@@ -43,6 +43,7 @@ function normalize(d) {
     if (!Array.isArray(u.gains)) u.gains = [];
     if (!Array.isArray(u.plans)) u.plans = [];
     if (!Array.isArray(u.history)) u.history = [];
+    if (!Array.isArray(u.levelLog)) u.levelLog = [];
   });
   delete d.categories; delete d.self; delete d.history; delete d.table; // レベル表は固定
   d.version = 5;
@@ -277,6 +278,7 @@ function accrueAll() {
     if (!added) continue;
     u.points = pts;
     u.level = Math.max(u.level, levelFromPoints(u.points));
+    noteLevelUp(u, before);
     if (u.level > before) levelUps.push(`${u.name} が Lv.${u.level} に到達`);
   }
   if (changed) save();
@@ -294,19 +296,32 @@ function levelFromPoints(p) {
 }
 const pointsFitLevel = (p, lv) => p >= LEVEL_TABLE[lv] && (lv >= MAX_LV || p < LEVEL_TABLE[lv + 1]);
 
+// レベルが上がったら、到達したレベルごとに記録（新しい順・最大 100 件）
+function noteLevelUp(u, before) {
+  if (!(u.level > before)) return;
+  u.levelLog = u.levelLog || [];
+  const at = Date.now();
+  for (let lv = before + 1; lv <= u.level; lv++) u.levelLog.unshift({ level: lv, at });
+  if (u.levelLog.length > 100) u.levelLog.length = 100;
+}
+
 function setLevel(u, value) {
   const to = clamp(Math.round(Number(value) || 0), 0, MAX_LV);
   if (u.level === to) return false;
+  const before = u.level;
   u.level = to;
+  noteLevelUp(u, before);
   if (!hasPoints(u) || !pointsFitLevel(Number(u.points), to)) u.points = LEVEL_TABLE[to];
   u.accruedAt = todayKey();
   u.updatedAt = Date.now();
   return true;
 }
-function setPoints(u, value) {
+function setPoints(u, value, { log = true } = {}) {
   const v = String(value ?? '').trim();
+  const before = u.level;
   u.points = v === '' ? null : Math.max(0, Math.round(Number(v) || 0));
   if (hasPoints(u)) u.level = levelFromPoints(u.points);
+  if (log) noteLevelUp(u, before);
   u.accruedAt = todayKey(); // 手入力した値は今日の分まで含むとみなす
   u.updatedAt = Date.now();
 }
@@ -581,6 +596,7 @@ function openSheet(html, bind) {
 }
 
 // アプリ内の確認ダイアログ（ブラウザ標準の confirm の代わり）
+const CALENDAR_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 const CLOCK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>';
 const LINK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M14 4h6v6"/><path d="M20 4 10 14"/><path d="M19 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V6a1 1 0 0 1 1-1h5"/></svg>';
 const PENCIL_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 20h9"/><path d="M16.5 3.5a2.1 2.1 0 0 1 3 3L7 19l-4 1 1-4Z"/></svg>';
@@ -737,6 +753,8 @@ function bindPlans(form, u, onChange) {
     });
   });
 
+  form.querySelector('#calendarOpen').addEventListener('click', () => openCalendar(u));
+
   // 追加されたポイントの履歴
   form.querySelector('#historyOpen').addEventListener('click', () => {
     const items = (u.history || []).map((h) => {
@@ -775,6 +793,87 @@ function joinedInfoHTML(u) {
       : '未加入', u.superfan ? 'on' : 'off');
 }
 
+function levelLogHTML(u) {
+  const log = u.levelLog || [];
+  if (!log.length) return '<p class="muted small plan-empty">まだ記録はありません。レベルが上がるとここに記録されます。</p>';
+  const p2 = (n) => String(n).padStart(2, '0');
+  return log.map((e) => {
+    const d = new Date(e.at);
+    return `<div class="log-item"><b>Lv.${e.level}</b><span class="muted">到達</span>
+      <span class="log-date">${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}</span></div>`;
+  }).join('');
+}
+
+/* 増加カレンダー：日ごとの増加（増加ペース＋追加予定）を月表示。日付をタップすると内訳 */
+function dayBreakdown(u, d) {
+  const items = [];
+  for (const r of u.gains || []) {
+    if (!(r.amount > 0) || !ruleMatches(r, d)) continue;
+    const label = r.type === 'daily' ? '毎日' : r.type === 'weekly' ? '毎週' : (r.superfan ? 'スパファン' : '毎月');
+    items.push({ label, amount: r.amount });
+  }
+  const key = dayKey(d);
+  for (const pl of u.plans || []) {
+    if (pl.amount > 0 && pl.date === key) items.push({ label: `追加予定${pl.time ? `（${pl.time}）` : ''}`, amount: pl.amount, plan: true });
+  }
+  return items;
+}
+function openCalendar(u) {
+  const now = startOfToday();
+  let y = now.getFullYear(); let m = now.getMonth();
+  openSheet(`
+    <div class="cal-head">
+      <button type="button" class="icon-btn small" data-cal="-1" aria-label="前の月">&lt;</button>
+      <b id="calTitle"></b>
+      <button type="button" class="icon-btn small" data-cal="1" aria-label="次の月">&gt;</button>
+    </div>
+    <div class="cal-grid cal-week">${WEEKDAYS.map((w) => `<span>${w}</span>`).join('')}</div>
+    <div class="cal-grid" id="calGrid"></div>
+    <div class="cal-total" id="calTotal"></div>
+    <div class="cal-detail" id="calDetail"></div>
+    <div class="row"><button type="button" class="btn" data-sheet-close>閉じる</button></div>`, (dlg) => {
+    const grid = dlg.querySelector('#calGrid');
+    const detail = dlg.querySelector('#calDetail');
+    const showDetail = (d) => {
+      const items = dayBreakdown(u, d);
+      detail.innerHTML = `<div class="cal-detail-title">${fmtYMD(d)}</div>` + (items.length
+        ? items.map((it) => `<div class="cal-detail-row ${it.plan ? 'plan' : ''}"><span>${esc(it.label)}</span><b>+${num(it.amount)}pt</b></div>`).join('')
+        : '<p class="muted small">増加はありません</p>');
+    };
+    const draw = () => {
+      dlg.querySelector('#calTitle').textContent = `${y}年${m + 1}月`;
+      const first = new Date(y, m, 1);
+      const last = new Date(y, m + 1, 0).getDate();
+      let total = 0;
+      const cells = Array.from({ length: first.getDay() }, () => '<span class="cal-cell empty"></span>');
+      for (let day = 1; day <= last; day++) {
+        const d = new Date(y, m, day);
+        const items = dayBreakdown(u, d);
+        const sum = items.reduce((a, it) => a + it.amount, 0);
+        total += sum;
+        const cls = ['cal-cell', sum ? 'on' : '', items.some((it) => it.plan) ? 'plan' : '', d.getTime() === now.getTime() ? 'today' : ''].join(' ');
+        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span>${day}</span><b>${sum ? `+${num(sum)}` : ''}</b></button>`);
+      }
+      grid.innerHTML = cells.join('');
+      dlg.querySelector('#calTotal').innerHTML = `${m + 1}月の増加 合計 <b>+${num(total)}pt</b>`;
+      detail.innerHTML = '';
+    };
+    dlg.querySelectorAll('[data-cal]').forEach((b) => b.addEventListener('click', () => {
+      m += Number(b.dataset.cal);
+      if (m < 0) { m = 11; y--; } else if (m > 11) { m = 0; y++; }
+      draw();
+    }));
+    grid.addEventListener('click', (e) => {
+      const c = e.target.closest('[data-day]');
+      if (!c) return;
+      grid.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
+      c.classList.add('sel');
+      showDetail(new Date(y, m, Number(c.dataset.day)));
+    });
+    draw();
+  });
+}
+
 let refreshOpenDetail = null; // 開いている詳細画面を描き直す関数
 function openDetailModal(u) {
   const tiktok = u.handle
@@ -800,6 +899,10 @@ function openDetailModal(u) {
       <div class="slides">
         <div class="slide">
           <div class="info-blocks" id="dInfo"></div>
+          <div class="level-log">
+            <div class="plans-head"><span>レベルアップ記録</span></div>
+            <div id="dLevelLog"></div>
+          </div>
         </div>
         <div class="slide">
           <div class="stages" id="dStages"></div>
@@ -807,6 +910,7 @@ function openDetailModal(u) {
             <div class="plans-head"><span>追加予定</span>
               <span class="plans-actions">
                 <button type="button" class="btn small" id="planOpen">予定を追加</button>
+                <button type="button" class="icon-btn small" id="calendarOpen" aria-label="増加カレンダー" title="増加カレンダー">${CALENDAR_ICON}</button>
                 <button type="button" class="icon-btn small" id="historyOpen" aria-label="追加履歴" title="追加履歴">${CLOCK_ICON}</button>
               </span></div>
             <div id="planList"></div>
@@ -826,6 +930,7 @@ function openDetailModal(u) {
       form.querySelector('#dBar').style.width = `${clamp((pts / goal) * 100, 0, 100)}%`;
       form.querySelector('#dBarText').textContent = `${num(pts)}/${num(goal)}`;
       form.querySelector('#dInfo').innerHTML = joinedInfoHTML(u);
+      form.querySelector('#dLevelLog').innerHTML = levelLogHTML(u);
       form.querySelector('#dStages').innerHTML = stagesHTML(u, { milestone: false });
       renderPlans();
     };
@@ -864,10 +969,8 @@ function basicFieldsHTML(u) {
       <div class="field"><label>現在ポイント</label>
         <input class="input" type="number" inputmode="numeric" min="0" name="points" value="${u && hasPoints(u) ? u.points : ''}"></div>
     </div>
-    <div class="field-row">
-      <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
-      <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>
-    </div>`;
+    <div class="field"><label>加入日</label><input class="input" type="date" name="joined" value="${esc(u?.joined)}"></div>
+    <div class="field"><label>タグ</label><input class="input" name="tags" value="${esc((u?.tags || []).join(', '))}" placeholder="最推し, 歌枠"></div>`;
 }
 
 /* スパファン：加入中は毎月 +1,300pt。付与日はスパファン加入日の「前日」の日付（1日加入なら月末） */
@@ -911,8 +1014,7 @@ function paceFieldsHTML(u) {
         <label><input type="radio" name="superfan" value="1" ${u?.superfan ? 'checked' : ''}><span>加入中</span></label>
       </div></div>
     <div class="pace-row" id="sfRow" ${u?.superfan ? '' : 'hidden'}><span class="pace-title">加入日</span>
-      <input class="input" type="date" name="superfanSince" value="${esc(u?.superfanSince || todayKey())}"></div>
-    <div class="pace-row top"><span class="pace-title">7日間</span><div class="week-preview" id="pacePreview"></div></div>`;
+      <input class="input" type="date" name="superfanSince" value="${esc(u?.superfanSince || todayKey())}"></div>`;
 }
 
 function readPace(form) {
@@ -929,7 +1031,6 @@ function readPace(form) {
 }
 
 function bindPace(form) {
-  const preview = form.querySelector('#pacePreview');
   const monthAmt = form.elements.gMonthly;
   const monthDay = form.elements.gDay;
   const sinceEl = form.elements.superfanSince;
@@ -953,21 +1054,10 @@ function bindPace(form) {
     monthAmt.disabled = on;
     monthDay.disabled = on;
   };
-  const update = () => {
-    const tmp = { gains: readPace(form) };
-    const d = startOfToday();
-    preview.innerHTML = Array.from({ length: 7 }, () => {
-      d.setDate(d.getDate() + 1);
-      const g = gainOn(tmp, d);
-      return `<div class="${g ? 'on' : ''}"><span>${d.getMonth() + 1}/${d.getDate()}</span><span>${WEEKDAYS[d.getDay()]}</span><b>${g ? `+${num(g)}` : '-'}</b></div>`;
-    }).join('');
-  };
-  form.querySelectorAll('[data-wd]').forEach((b) => b.addEventListener('click', () => { b.classList.toggle('active'); update(); }));
-  ['gDaily', 'gWeekly', 'gMonthly', 'gDay'].forEach((name) => form.elements[name].addEventListener('input', update));
-  form.querySelectorAll('input[name="superfan"]').forEach((r) => r.addEventListener('change', () => { syncSuperfan(); update(); }));
-  sinceEl.addEventListener('input', () => { syncSuperfan(); update(); });
+  form.querySelectorAll('[data-wd]').forEach((b) => b.addEventListener('click', () => b.classList.toggle('active')));
+  form.querySelectorAll('input[name="superfan"]').forEach((r) => r.addEventListener('change', syncSuperfan));
+  sinceEl.addEventListener('input', syncSuperfan);
   syncSuperfan();
-  update();
 }
 
 /* 2 画面を横に並べたスライダー。2 枚しかないので、同じ方向へ続けてスライドしても
@@ -1078,7 +1168,7 @@ function openEditModal(u) {
     const name = String(fd.get('name')).trim();
     if (!name) { slider.to(0); return false; }
     const now = Date.now();
-    const t = u || { id: uid(), level: 0, createdAt: now };
+    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], createdAt: now };
     t.name = name;
     t.handle = String(fd.get('handle')).trim().replace(/^@/, '');
     t.avatar = String(fd.get('avatar') || '') || null;
@@ -1089,7 +1179,8 @@ function openEditModal(u) {
     t.gains = readPace(modalForm);
     t.updatedAt = now;
     if (adding) data.users.push(t);
-    setPoints(t, fd.get('points')); // メンレベはポイントから自動で決まる // 入力した値は今日の分まで含むとみなし、明日から自動加算
+    // メンレベはポイントから自動で決まる。入力値は今日の分まで含むとみなし、明日から自動加算（新規登録時はレベル記録しない）
+    setPoints(t, fd.get('points'), { log: !adding });
     save(); render();
     toast(adding ? `${name} さんを追加しました` : '保存しました');
     if (!adding) { openDetailModal(t); return false; } // 編集後は詳細表示に戻る

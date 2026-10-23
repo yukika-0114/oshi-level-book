@@ -271,10 +271,6 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin
 /* 増加ペース */
 .gain-row { display: flex; align-items: center; gap: 8px; }
 .gain-row .month-day { flex: 0 0 96px; }
-.week-preview { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; }
-.week-preview > div { display: grid; gap: 2px; padding: 6px 0; border-radius: 8px; background: var(--surface2); text-align: center; font-size: 11px; color: var(--muted); }
-.week-preview b { font-size: 12px; color: var(--muted); }
-.week-preview .on b { color: var(--cyan); }
 
 /* モーダルの見出し行（右上にゴミ箱） */
 .modal-head { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-bottom: 14px; }
@@ -512,3 +508,40 @@ a.icon-btn { color: var(--text); text-decoration: none; }
 .pace-stack { display: grid; gap: 6px; min-width: 0; }
 .pace-row .wd button { padding: 6px 0; }
 .input:disabled { opacity: .6; }
+
+/* 日付入力が横にはみ出さないように（iOS） */
+input[type=date].input { display: block; width: 100%; min-width: 0; -webkit-appearance: none; appearance: none; text-align: left; }
+input[type=date].input::-webkit-date-and-time-value { text-align: left; }
+
+/* 詳細：レベルアップ記録 */
+.level-log { margin: 0 0 16px; }
+#dLevelLog { max-height: 210px; overflow-y: auto; }
+.log-item { display: flex; align-items: baseline; gap: 8px; padding: 9px 0; border-bottom: 1px solid var(--border); font-size: 14px; }
+.log-item:last-child { border-bottom: 0; }
+.log-item b { color: var(--cyan); }
+.log-date { margin-left: auto; font-size: 12px; color: var(--muted); font-variant-numeric: tabular-nums; }
+
+/* 増加カレンダー */
+.cal-head { display: flex; align-items: center; justify-content: space-between; }
+.cal-head b { font-size: 16px; }
+.cal-grid { display: grid; grid-template-columns: repeat(7, 1fr); gap: 3px; }
+.cal-week span { text-align: center; font-size: 11px; color: var(--muted); }
+.cal-cell {
+  display: grid; justify-items: center; align-content: start; gap: 1px; min-height: 44px; padding: 4px 0;
+  border: 1px solid transparent; border-radius: 8px; background: var(--surface2); color: var(--text); cursor: pointer; min-width: 0;
+}
+.cal-cell.empty { background: none; cursor: default; }
+.cal-cell span { font-size: 12px; }
+.cal-cell b { font-size: 9px; color: var(--cyan); white-space: nowrap; letter-spacing: -.02em; }
+.cal-cell.plan { border-color: var(--pink); }
+.cal-cell.plan b { color: #ff8aa1; }
+.cal-cell.today span { color: #000; background: var(--cyan); border-radius: 999px; padding: 0 5px; font-weight: 800; }
+.cal-cell.sel { border-color: var(--cyan); }
+.cal-total { font-size: 13px; color: var(--muted); text-align: right; }
+.cal-total b { color: var(--cyan); }
+.cal-detail:empty { display: none; }
+.cal-detail { display: grid; gap: 4px; padding-top: 8px; border-top: 1px solid var(--border); }
+.cal-detail-title { font-size: 13px; font-weight: 700; }
+.cal-detail-row { display: flex; justify-content: space-between; font-size: 13px; color: var(--muted); }
+.cal-detail-row b { color: var(--cyan); }
+.cal-detail-row.plan b { color: #ff8aa1; }
