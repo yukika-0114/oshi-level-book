@@ -45,6 +45,8 @@ function normalize(d) {
     if (!Array.isArray(u.history)) u.history = [];
     if (!Array.isArray(u.levelLog)) u.levelLog = [];
     if (!u.notes || typeof u.notes !== 'object') u.notes = {};
+    if (!Array.isArray(u.pending)) u.pending = [];
+    if (!Array.isArray(u.paceLog)) u.paceLog = [];
   });
   delete d.categories; delete d.self; delete d.history; delete d.table; // レベル表は固定
   d.version = 5;
@@ -249,6 +251,18 @@ function addHistory(u, entry) {
   if (u.history.length > HISTORY_LIMIT) u.history.length = HISTORY_LIMIT;
 }
 
+// その日の増加ペースの内訳（加入日・スパファン加入日より前は含めない）
+function paceItems(u, d) {
+  const items = [];
+  for (const r of u.gains || []) {
+    if (!ruleActive(u, r, d)) continue;
+    const label = r.type === 'daily' ? '毎日' : r.type === 'weekly' ? '毎週' : (r.superfan ? 'スパファン' : '毎月');
+    items.push({ label, amount: r.amount });
+  }
+  return items;
+}
+const pendingCount = () => data.users.reduce((n, u) => n + (u.pending || []).length, 0);
+
 function accrueAll() {
   const today = startOfToday();
   const tk = dayKey(today);
@@ -261,30 +275,26 @@ function accrueAll() {
     if (u.accruedAt === tk && !due.length) continue;
     const from = parseDayKey(u.accruedAt);
     changed = true;
-    const before = u.level;
-    let pts = curPoints(u);
-    let added = false;
-    // 増加ペース（前回反映した日の翌日〜今日）
+    // 増加ペース（前回確認した日の翌日〜今日）は、実際に増えたかを確認してから反映する
     if (from && u.accruedAt !== tk && hasGains(u)) {
-      let add = 0; let days = 0;
+      u.pending = u.pending || [];
       const d = new Date(from);
       for (let i = 0; i < PREDICT_DAYS && d < today; i++) {
         d.setDate(d.getDate() + 1);
-        add += gainOn(u, d); days++;
-      }
-      if (add > 0) {
-        pts += add; added = true;
-        addHistory(u, { kind: 'pace', amount: add, label: `増加ペース（${days}日分）`, pts, level: levelFromPoints(pts) });
+        const items = paceItems(u, d);
+        if (items.length) u.pending.push({ id: uid(), date: dayKey(d), items, amount: items.reduce((a, it) => a + it.amount, 0) });
       }
     }
     u.accruedAt = tk;
+    if (!due.length) continue;
     // 日時が来た追加予定は加算して予定から外し、履歴へ
+    const before = u.level;
+    let pts = curPoints(u);
     for (const pl of due) {
-      pts += pl.amount; added = true;
-      addHistory(u, { kind: 'plan', amount: pl.amount, label: '追加予定', planned: planAt(pl), pts, level: levelFromPoints(pts) });
+      pts += pl.amount;
+      addHistory(u, { kind: 'plan', amount: pl.amount, label: '追加予定', date: pl.date, planned: planAt(pl), pts, level: levelFromPoints(pts) });
     }
     u.plans = (u.plans || []).filter((pl) => !due.includes(pl) && planAt(pl) > nk);
-    if (!added) continue;
     u.points = pts;
     u.level = Math.max(u.level, levelFromPoints(u.points));
     noteLevelUp(u, before);
@@ -293,6 +303,65 @@ function accrueAll() {
   if (changed) save();
   if (levelUps.length) toast(levelUps.join(' / '));
   return changed;
+}
+
+// 確認待ちの増加ペースに回答（増えた → ポイントに反映して記録 / 増えてない → 反映しない）
+function answerPending(u, id, increased) {
+  const i = (u.pending || []).findIndex((pd) => pd.id === id);
+  if (i < 0) return;
+  const [pd] = u.pending.splice(i, 1);
+  if (increased) {
+    const before = u.level;
+    u.points = curPoints(u) + pd.amount;
+    u.level = Math.max(u.level, levelFromPoints(u.points));
+    noteLevelUp(u, before);
+    u.paceLog = u.paceLog || [];
+    u.paceLog.push({ date: pd.date, items: pd.items, amount: pd.amount });
+    if (u.level > before) toast(`${u.name} が Lv.${u.level} に到達`);
+  }
+  u.updatedAt = Date.now();
+}
+
+// 確認待ちの一覧（推しごと・日付ごとに「増えた／増えてない」を選ぶ）
+function openPendingSheet() {
+  if (!pendingCount()) return;
+  openSheet(`
+    <div class="sheet-title"><h3>増加の確認</h3>
+      <button type="button" class="close-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
+    <p class="muted small" style="margin:0">増加ペースで増える予定だった日です。実際に増えたかを選んでください。「増えた」を選んだ日だけポイントに反映されます。</p>
+    <div class="pending-list" id="pendingList"></div>
+    <div class="row"><button type="button" class="btn accent" id="pendingAllYes">すべて「増えた」にする</button></div>`, (dlg, close) => {
+    const listEl = dlg.querySelector('#pendingList');
+    const draw = () => {
+      if (!pendingCount()) { close(); render(); refreshOpenDetail?.(); toast('確認が完了しました'); return; }
+      listEl.innerHTML = data.users.filter((u) => (u.pending || []).length).map((u) => `
+        <div class="pending-group">
+          <div class="pending-name">${avatarHTML(u)}<b>${esc(u.name)}</b><span class="muted small">${u.pending.length}件</span></div>
+          ${u.pending.map((pd) => {
+            const d = parseDayKey(pd.date);
+            return `<div class="pending-item">
+              <div class="pending-info"><span>${fmtYMD(d)}</span>
+                <span class="muted small">${pd.items.map((it) => `${esc(it.label)} +${num(it.amount)}`).join('・')}</span></div>
+              <div class="pending-actions">
+                <button type="button" class="btn small" data-pans="0" data-uid="${esc(u.id)}" data-pid="${esc(pd.id)}">増えてない</button>
+                <button type="button" class="btn small accent" data-pans="1" data-uid="${esc(u.id)}" data-pid="${esc(pd.id)}">増えた</button>
+              </div></div>`;
+          }).join('')}
+        </div>`).join('');
+    };
+    listEl.addEventListener('click', (e) => {
+      const b = e.target.closest('[data-pans]');
+      if (!b) return;
+      const u = userById(b.dataset.uid);
+      if (u) answerPending(u, b.dataset.pid, b.dataset.pans === '1');
+      save(); render(); refreshOpenDetail?.(); draw();
+    });
+    dlg.querySelector('#pendingAllYes').addEventListener('click', () => {
+      for (const u of data.users) for (const pd of [...(u.pending || [])]) answerPending(u, pd.id, true);
+      save(); draw();
+    });
+    draw();
+  });
 }
 
 /* ========== レベル・ポイントの連動 ==========
@@ -415,6 +484,7 @@ function renderUsers() {
       <div class="stat"><div class="label">メンレベ平均</div><div class="stat-row"><span class="value" style="color:${COLOR}">${avg}</span></div></div>
       <div class="stat"><div class="label">Lv.50 達成</div><div class="stat-row"><span class="value">${done}</span><span class="unit">人</span></div></div>
     </div>
+    ${pendingCount() ? `<button type="button" class="pending-banner" id="openPending"><b>${pendingCount()}件</b>の増加の確認があります<span>確認する</span></button>` : ''}
     <div class="toolbar">
       <input id="search" class="input grow" type="search" placeholder="名前・IDで検索" value="${esc(ui.search)}">
       <select id="sort" class="input sort-select">${sortOpts}</select>
@@ -723,7 +793,7 @@ function bindPlans(form, u, onChange) {
     openSheet(`
       <h3>追加予定を登録</h3>
       <div class="plan-inputs">
-        <label><span>日付</span><input class="input" type="date" id="planDate" min="${todayKey()}" value="${tomorrow()}"></label>
+        <label><span>日付</span><input class="input" type="date" id="planDate" value="${tomorrow()}"></label>
         <label><span>時刻</span><input class="input" type="time" id="planTime"></label>
       </div>
       <label class="plan-amount-field"><span>追加するpt</span><input class="input" type="number" inputmode="numeric" min="1" id="planAmount" placeholder="0"></label>
@@ -750,15 +820,18 @@ function bindPlans(form, u, onChange) {
       dlg.querySelector('form').addEventListener('submit', () => {
         const amount = Math.round(Number(amountEl.value) || 0);
         if (amount <= 0) { toast('追加するポイントを入力してください'); return; }
-        if (!dateEl.value || dateEl.value < todayKey()) { toast('今日以降の日付を選んでください'); return; }
+        if (!dateEl.value) { toast('日付を選んでください'); return; }
         const date = dateEl.value; const time = timeEl.value;
         u.plans = u.plans || [];
         u.plans.push({ id: uid(), date, time, amount });
         close();
-        accrueAll(); // すでに過ぎた日時ならすぐに加算する
+        const past = planAt({ date, time }) <= nowKey();
+        accrueAll(); // 過去の日時ならすぐに加算する
         u.updatedAt = Date.now();
         save(); render(); onChange();
-        toast(`${date.replace(/-/g, '/')}${time ? ` ${time}` : ''} に +${num(amount)}pt を予定しました`);
+        toast(past
+          ? `${date.replace(/-/g, '/')} の +${num(amount)}pt を追加しました`
+          : `${date.replace(/-/g, '/')}${time ? ` ${time}` : ''} に +${num(amount)}pt を予定しました`);
       });
     });
   });
@@ -767,18 +840,19 @@ function bindPlans(form, u, onChange) {
 
   // 追加されたポイントの履歴
   form.querySelector('#historyOpen').addEventListener('click', () => {
-    const items = (u.history || []).map((h) => {
-      const d = new Date(h.at);
-      const p2 = (n) => String(n).padStart(2, '0');
-      const when = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()} ${p2(d.getHours())}:${p2(d.getMinutes())}`;
+    const items = (u.history || []).filter((h) => h.kind === 'plan').map((h) => {
+      // 予定の日時（時刻なしは日付のみ）
+      const [dk, tm] = String(h.planned || '').split('T');
+      const d = parseDayKey(h.date || dk) || new Date(h.at);
+      const when = `${d.getFullYear()}/${d.getMonth() + 1}/${d.getDate()}${tm && tm !== '00:00' ? ` ${tm}` : ''}`;
       return `<div class="hist-item">
         <div class="hist-main"><span>${when}</span><b>+${num(h.amount)}pt</b></div>
-        <div class="hist-sub"><span>${esc(h.label)}</span><span>追加後 ${num(h.pts)}pt（Lv.${h.level}）</span></div>
+        <div class="hist-sub"><span>追加予定</span><span>追加後 ${num(h.pts)}pt（Lv.${h.level}）</span></div>
       </div>`;
     }).join('');
     openSheet(`
       <h3>追加履歴</h3>
-      <div class="hist-list">${items || '<p class="muted small">まだ履歴はありません。追加予定や増加ペースで加算されると、ここに記録されます。</p>'}</div>
+      <div class="hist-list">${items || '<p class="muted small">まだ履歴はありません。追加予定でポイントが追加されると、ここに記録されます。</p>'}</div>
       <div class="row"><button type="button" class="btn" data-sheet-close>閉じる</button></div>`);
   });
 
@@ -816,14 +890,21 @@ function levelLogHTML(u) {
 
 /* 増加カレンダー：日ごとの増加（増加ペース＋追加予定）を月表示。日付をタップすると内訳 */
 function dayBreakdown(u, d) {
-  const items = [];
-  for (const r of u.gains || []) {
-    if (!ruleActive(u, r, d)) continue;
-    const label = r.type === 'daily' ? '毎日' : r.type === 'weekly' ? '毎週' : (r.superfan ? 'スパファン' : '毎月');
-    items.push({ label, amount: r.amount });
-  }
   const key = dayKey(d);
-  if (u.joined && key < u.joined) return items;
+  const tk = todayKey();
+  if (u.joined && key < u.joined) return [];
+  const items = [];
+  if (key <= tk) {
+    // 過去・今日：確認して「増えた」分と、追加予定で追加した分だけ
+    for (const lg of u.paceLog || []) {
+      if (lg.date === key) for (const it of lg.items) items.push({ label: it.label, amount: it.amount });
+    }
+    for (const h of u.history || []) {
+      if (h.kind === 'plan' && (h.date || String(h.planned || '').slice(0, 10)) === key) items.push({ label: '追加予定', amount: h.amount, plan: true });
+    }
+  } else {
+    items.push(...paceItems(u, d)); // 明日以降は増加ペースの予定
+  }
   for (const pl of u.plans || []) {
     if (pl.amount > 0 && pl.date === key) items.push({ label: `追加予定${pl.time ? `（${pl.time}）` : ''}`, amount: pl.amount, plan: true });
   }
@@ -856,9 +937,10 @@ function openCalendar(u) {
       selected = d;
       const key = dayKey(d);
       const items = dayBreakdown(u, d);
+      const waiting = (u.pending || []).some((pd) => pd.date === key);
       detail.innerHTML = `<div class="cal-detail-title">${fmtYMD(d)}</div>` + (items.length
         ? items.map((it) => `<div class="cal-detail-row ${it.plan ? 'plan' : ''}"><span>${esc(it.label)}</span><b>+${num(it.amount)}pt</b></div>`).join('')
-        : '<p class="muted small">増加はありません</p>')
+        : `<p class="muted small">${waiting ? '増加ペースの確認待ちです' : '増加はありません'}</p>`)
         + `<textarea class="input cal-memo" id="calMemo" rows="2" maxlength="500" placeholder="メモを書く">${esc(u.notes[key] || '')}</textarea>`;
       // メモは入力するたびに自動保存
       const memo = detail.querySelector('#calMemo');
@@ -886,6 +968,7 @@ function openCalendar(u) {
         total += sum;
         const cls = ['cal-cell', sum ? 'on' : '', items.some((it) => it.plan) ? 'plan' : '',
           d.getTime() === now.getTime() ? 'today' : '', u.notes[dayKey(d)] ? 'memo' : '',
+          (u.pending || []).some((pd) => pd.date === dayKey(d)) ? 'pending' : '',
           selected && d.getTime() === selected.getTime() ? 'sel' : ''].join(' ');
         cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : ''}</b><i class="cal-dot"></i><i class="cal-memo-mark"></i></button>`);
       }
@@ -1233,7 +1316,7 @@ function openEditModal(u) {
     const name = String(fd.get('name')).trim();
     if (!name) { slider.to(0); return false; }
     const now = Date.now();
-    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], notes: {}, createdAt: now };
+    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], notes: {}, pending: [], paceLog: [], createdAt: now };
     t.name = name;
     t.handle = String(fd.get('handle')).trim().replace(/^@/, '');
     t.avatar = String(fd.get('avatar') || '') || null;
@@ -1493,6 +1576,7 @@ view.addEventListener('click', (e) => {
   const user = t.closest('[data-user]');
   if (user) { openUserModal(user.dataset.user); return; }
 
+  if (t.closest('#openPending')) { openPendingSheet(); return; }
   switch (t.id) {
     case 'bandToggle': ui.band = !ui.band; render(); break;
     case 'expandAll': case 'collapseAll':
@@ -1578,7 +1662,12 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 
 accrueAll();
 render();
-// アプリを開いたまま日付が変わった場合や、バックグラウンドから戻ったときにも加算する
-const accrueAndRefresh = () => { if (accrueAll()) { render(); refreshOpenDetail?.(); } };
+if (pendingCount()) setTimeout(openPendingSheet, 400);
+// アプリを開いたまま日付が変わった場合や、バックグラウンドから戻ったときにも反映する
+const accrueAndRefresh = () => {
+  const beforePending = pendingCount();
+  if (accrueAll()) { render(); refreshOpenDetail?.(); }
+  if (pendingCount() > beforePending && !document.querySelector('dialog[open]')) openPendingSheet();
+};
 setInterval(accrueAndRefresh, 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) accrueAndRefresh(); });

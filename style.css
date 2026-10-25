@@ -604,3 +604,21 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .cal-memo { min-height: 64px; margin-top: 6px; resize: none; line-height: 1.5; }
 .cal-memo-mark { position: absolute; bottom: 4px; width: 14px; height: 2px; border-radius: 2px; background: transparent; }
 .cal-cell.memo .cal-memo-mark { background: #ffd34d; }
+
+/* 増加の確認 */
+.pending-banner {
+  display: flex; align-items: center; gap: 6px; width: 100%; margin: 0 0 12px; padding: 12px 14px;
+  border: 1px solid rgba(255, 211, 77, .5); border-radius: 12px; background: rgba(255, 211, 77, .1); color: var(--text);
+  font-size: 14px; text-align: left; cursor: pointer;
+}
+.pending-banner b { color: #ffd34d; }
+.pending-banner span { margin-left: auto; font-size: 12px; font-weight: 700; color: #ffd34d; }
+.pending-list { display: grid; gap: 14px; max-height: 60dvh; overflow-y: auto; }
+.pending-name { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; }
+.pending-name .avatar { width: 28px; height: 28px; font-size: 12px; }
+.pending-item { display: flex; align-items: center; gap: 8px; padding: 8px 0; border-bottom: 1px solid var(--border); }
+.pending-item:last-child { border-bottom: 0; }
+.pending-info { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 14px; }
+.pending-actions { display: flex; gap: 6px; flex: none; }
+.pending-actions .btn { padding: 6px 10px; }
+.cal-cell.pending .cal-day { box-shadow: inset 0 0 0 1.5px #ffd34d; }
