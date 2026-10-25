@@ -330,7 +330,7 @@ function openPendingSheet() {
       <button type="button" class="close-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
     <p class="muted small" style="margin:0">増加ペースで増える予定だった日です。実際に増えたかを選んでください。「増えた」を選んだ日だけポイントに反映されます。</p>
     <div class="pending-list" id="pendingList"></div>
-    <div class="row"><button type="button" class="btn accent" id="pendingAllYes">すべて「増えた」にする</button></div>`, (dlg, close) => {
+    <button type="button" class="link-all" id="pendingAllYes">残りをまとめて「増えた」にする</button>`, (dlg, close) => {
     const listEl = dlg.querySelector('#pendingList');
     const draw = () => {
       if (!pendingCount()) { close(); render(); refreshOpenDetail?.(); toast('確認が完了しました'); return; }
@@ -343,8 +343,8 @@ function openPendingSheet() {
               <div class="pending-info"><span>${fmtYMD(d)}</span>
                 <span class="muted small">${pd.items.map((it) => `${esc(it.label)} +${num(it.amount)}`).join('・')}</span></div>
               <div class="pending-actions">
-                <button type="button" class="btn small" data-pans="0" data-uid="${esc(u.id)}" data-pid="${esc(pd.id)}">増えてない</button>
-                <button type="button" class="btn small accent" data-pans="1" data-uid="${esc(u.id)}" data-pid="${esc(pd.id)}">増えた</button>
+                <button type="button" class="ans-btn no" data-pans="0" data-uid="${esc(u.id)}" data-pid="${esc(pd.id)}">増えてない</button>
+                <button type="button" class="ans-btn yes" data-pans="1" data-uid="${esc(u.id)}" data-pid="${esc(pd.id)}">増えた</button>
               </div></div>`;
           }).join('')}
         </div>`).join('');
@@ -605,7 +605,6 @@ function unlockScroll() {
 
 function openModal(html, onSubmit, bind) {
   modalForm.className = '';
-  modalBack = null; // 外側タップで戻る先（なければ閉じる）
   modalForm.innerHTML = html;
   modalForm.onsubmit = (e) => {
     e.preventDefault();
@@ -644,12 +643,10 @@ new MutationObserver(() => {
   setTimeout(run, 60); // 描画フレームが止まっている環境向けの保険
 }).observe(modalForm, { childList: true, subtree: true });
 window.addEventListener('resize', () => fitOneLine(modalForm));
-// モーダルの外側は「上の空いている部分」をタップしたときだけ閉じる（横の誤タップでは閉じない）
-let modalBack = null;
+// モーダルの外側をタップしたら閉じる
 modal.addEventListener('click', (e) => {
   if (e.target !== modal) return;
-  if (e.clientY >= modal.getBoundingClientRect().top) return;
-  if (modalBack) modalBack(); else modal.close();
+  modal.close();
 });
 
 // 小さなシート型ダイアログ（外側をタップすると閉じる）
@@ -675,6 +672,7 @@ function openSheet(html, bind, { full = false } = {}) {
 }
 
 // アプリ内の確認ダイアログ（ブラウザ標準の confirm の代わり）
+const BACK_ICON = '<svg viewBox="0 0 24 24" width="22" height="22" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m15 18-6-6 6-6"/></svg>';
 const CLOSE_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6 6 18"/></svg>';
 const CALENDAR_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><rect x="3" y="5" width="18" height="16" rx="2"/><path d="M3 10h18M8 3v4M16 3v4"/></svg>';
 const CLOCK_ICON = '<svg viewBox="0 0 24 24" width="20" height="20" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 12a9 9 0 1 0 3-6.7"/><path d="M3 4v5h5"/><path d="M12 7v5l3 2"/></svg>';
@@ -851,9 +849,8 @@ function bindPlans(form, u, onChange) {
       </div>`;
     }).join('');
     openSheet(`
-      <h3>追加履歴</h3>
-      <div class="hist-list">${items || '<p class="muted small">まだ履歴はありません。追加予定でポイントが追加されると、ここに記録されます。</p>'}</div>
-      <div class="row"><button type="button" class="btn" data-sheet-close>閉じる</button></div>`);
+      <button type="button" class="back-head" data-sheet-close aria-label="戻る">${BACK_ICON}<span>履歴</span></button>
+      <div class="hist-list full">${items || '<p class="muted small">まだ履歴はありません。追加予定でポイントが追加されると、ここに記録されます。</p>'}</div>`, null, { full: true });
   });
 
   list.addEventListener('click', (e) => {
@@ -1333,7 +1330,6 @@ function openEditModal(u) {
     if (!adding) { openDetailModal(t); return false; } // 編集後は詳細表示に戻る
   });
 
-  if (u) modalBack = () => openDetailModal(u); // 編集中に外側をタップしたら詳細へ戻る
   const form = modalForm;
   const foot = form.querySelector('#editFoot');
   const tabs = form.querySelectorAll('[data-slide]');

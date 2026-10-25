@@ -622,3 +622,21 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .pending-actions { display: flex; gap: 6px; flex: none; }
 .pending-actions .btn { padding: 6px 10px; }
 .cal-cell.pending .cal-day { box-shadow: inset 0 0 0 1.5px #ffd34d; }
+
+/* 全画面の「＜ 履歴」 */
+.back-head {
+  display: inline-flex; align-items: center; gap: 4px; align-self: start; justify-self: start;
+  padding: 6px 8px 6px 0; border: 0; background: none; color: var(--text); font-size: 18px; font-weight: 700; cursor: pointer;
+}
+.hist-list.full { max-height: none; }
+
+/* 増加の確認：回答ボタン（各行）とまとめボタンを区別 */
+.ans-btn {
+  padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer; background: none;
+}
+.ans-btn.no { border: 1px solid var(--border); color: var(--muted); }
+.ans-btn.yes { border: 1.5px solid var(--cyan); color: var(--cyan); }
+.link-all {
+  justify-self: center; padding: 8px 4px; border: 0; background: none;
+  color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
+}
