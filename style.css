@@ -621,7 +621,6 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .pending-info { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 14px; }
 .pending-actions { display: flex; gap: 6px; flex: none; }
 .pending-actions .btn { padding: 6px 10px; }
-.cal-cell.pending .cal-day { box-shadow: inset 0 0 0 1.5px #ffd34d; }
 
 /* 全画面の「＜ 履歴」 */
 .back-head {
@@ -648,3 +647,11 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .cal-legend .pace::before { background: var(--cyan); }
 .cal-legend .plan::before { background: var(--pink); }
 .cal-legend .wait::before { background: none; box-shadow: inset 0 0 0 1.5px #ffd34d; }
+
+/* 色付きの丸は使わず、文字の色で区別 */
+.cal-dot { display: none; }
+.cal-cell.pending b { color: #ffd34d; font-weight: 600; }
+.cal-legend .lg::before { display: none; }
+.cal-legend .pace { color: var(--cyan); }
+.cal-legend .plan { color: #ff8aa1; }
+.cal-legend .wait { color: #ffd34d; }

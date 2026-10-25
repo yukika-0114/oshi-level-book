@@ -976,7 +976,7 @@ function openCalendar(u) {
           d.getTime() === now.getTime() ? 'today' : '', u.notes[dayKey(d)] ? 'memo' : '',
           (u.pending || []).some((pd) => pd.date === dayKey(d)) ? 'pending' : '',
           selected && d.getTime() === selected.getTime() ? 'sel' : ''].join(' ');
-        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : ''}</b><i class="cal-dot"></i><i class="cal-memo-mark"></i></button>`);
+        cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : (u.pending || []).some((pd) => pd.date === dayKey(d)) ? '未確認' : ''}</b><i class="cal-memo-mark"></i></button>`);
       }
       grid.innerHTML = cells.join('');
       dlg.querySelector('#calTotal').innerHTML = `${m + 1}月の増加 合計 <b>+${num(total)}pt</b>`;
@@ -1024,6 +1024,12 @@ function openCalendar(u) {
       if (swiped) { swiped = false; return; } // スライド直後のタップは無視
       const c = e.target.closest('[data-day]');
       if (!c) return;
+      if (c.classList.contains('sel')) { // 選択中の日付をもう一度押したら閉じる
+        c.classList.remove('sel');
+        selected = null;
+        detail.innerHTML = '';
+        return;
+      }
       grid.querySelectorAll('.sel').forEach((x) => x.classList.remove('sel'));
       c.classList.add('sel');
       showDetail(new Date(y, m, Number(c.dataset.day)));
