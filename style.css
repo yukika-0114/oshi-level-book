@@ -642,3 +642,9 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 }
 .sheet.full { touch-action: pan-y; }
 .sheet.full .sheet-body { min-height: 100dvh; }
+/* カレンダーの凡例 */
+.cal-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; font-size: 11px; color: var(--muted); }
+.cal-legend .lg::before { content: ""; display: inline-block; width: 8px; height: 8px; margin-right: 4px; border-radius: 50%; vertical-align: 0; }
+.cal-legend .pace::before { background: var(--cyan); }
+.cal-legend .plan::before { background: var(--pink); }
+.cal-legend .wait::before { background: none; box-shadow: inset 0 0 0 1.5px #ffd34d; }

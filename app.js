@@ -47,6 +47,7 @@ function normalize(d) {
     if (!u.notes || typeof u.notes !== 'object') u.notes = {};
     if (!Array.isArray(u.pending)) u.pending = [];
     if (!Array.isArray(u.paceLog)) u.paceLog = [];
+    if (!Array.isArray(u.paceSkipped)) u.paceSkipped = [];
   });
   delete d.categories; delete d.self; delete d.history; delete d.table; // レベル表は固定
   d.version = 5;
@@ -310,7 +311,10 @@ function answerPending(u, id, increased) {
   const i = (u.pending || []).findIndex((pd) => pd.id === id);
   if (i < 0) return;
   const [pd] = u.pending.splice(i, 1);
-  if (increased) {
+  if (!increased) {
+    u.paceSkipped = u.paceSkipped || [];
+    if (!u.paceSkipped.includes(pd.date)) u.paceSkipped.push(pd.date);
+  } else {
     const before = u.level;
     u.points = curPoints(u) + pd.amount;
     u.level = Math.max(u.level, levelFromPoints(u.points));
@@ -892,15 +896,14 @@ function dayBreakdown(u, d) {
   if (u.joined && key < u.joined) return [];
   const items = [];
   if (key <= tk) {
-    const registered = u.createdAt ? dayKey(new Date(u.createdAt)) : tk;
-    if (key <= registered) {
-      // アプリに登録した日まで（確認のしようがない期間）は増加ペースどおりに増えたものとして表示
-      items.push(...paceItems(u, d));
-    } else {
-      // 登録後：確認して「増えた」分だけ
-      for (const lg of u.paceLog || []) {
-        if (lg.date === key) for (const it of lg.items) items.push({ label: it.label, amount: it.amount });
-      }
+    // 過去・今日の増加ペース：「確認待ち」と「増えてない」と答えた日を除き、増えた分として表示
+    // （確認済みの日はそのときの内訳、それ以外は増加ペースどおり）
+    const waiting = (u.pending || []).some((pd) => pd.date === key);
+    const skipped = (u.paceSkipped || []).includes(key);
+    if (!waiting && !skipped) {
+      const logged = (u.paceLog || []).filter((lg) => lg.date === key);
+      if (logged.length) for (const lg of logged) for (const it of lg.items) items.push({ label: it.label, amount: it.amount });
+      else items.push(...paceItems(u, d));
     }
     for (const h of u.history || []) {
       if (h.kind === 'plan' && (h.date || String(h.planned || '').slice(0, 10)) === key) items.push({ label: '追加予定', amount: h.amount, plan: true });
@@ -928,6 +931,7 @@ function openCalendar(u) {
       <div class="cal-grid cal-week">${WEEKDAYS.map((w) => `<span>${w}</span>`).join('')}</div>
       <div class="cal-grid" id="calGrid"></div>
     </div>
+    <div class="cal-legend"><span class="lg pace">増加ペース</span><span class="lg plan">追加予定を含む日</span><span class="lg wait">確認待ち</span></div>
     <div class="cal-total" id="calTotal"></div>
     <div class="cal-detail" id="calDetail"></div>`, (dlg) => {
     const body = dlg.querySelector('#calBody');
@@ -942,7 +946,7 @@ function openCalendar(u) {
       const waiting = (u.pending || []).some((pd) => pd.date === key);
       detail.innerHTML = `<div class="cal-detail-title">${fmtYMD(d)}</div>` + (items.length
         ? items.map((it) => `<div class="cal-detail-row ${it.plan ? 'plan' : ''}"><span>${esc(it.label)}</span><b>+${num(it.amount)}pt</b></div>`).join('')
-        : `<p class="muted small">${waiting ? '増加ペースの確認待ちです' : '増加はありません'}</p>`)
+        : `<p class="muted small">${waiting ? '増加ペースの確認待ちです' : (u.paceSkipped || []).includes(key) ? '「増えてない」と回答した日です' : '増加はありません'}</p>`)
         + `<textarea class="input cal-memo" id="calMemo" rows="2" maxlength="500" placeholder="メモを書く">${esc(u.notes[key] || '')}</textarea>`;
       // メモは入力するたびに自動保存
       const memo = detail.querySelector('#calMemo');
@@ -1322,7 +1326,7 @@ function openEditModal(u) {
     const name = String(fd.get('name')).trim();
     if (!name) { slider.to(0); return false; }
     const now = Date.now();
-    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], notes: {}, pending: [], paceLog: [], createdAt: now };
+    const t = u || { id: uid(), level: 0, plans: [], history: [], levelLog: [], notes: {}, pending: [], paceLog: [], paceSkipped: [], createdAt: now };
     t.name = name;
     t.handle = String(fd.get('handle')).trim().replace(/^@/, '');
     t.avatar = String(fd.get('avatar') || '') || null;
