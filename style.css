@@ -640,3 +640,5 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
   justify-self: center; padding: 8px 4px; border: 0; background: none;
   color: var(--muted); font-size: 13px; text-decoration: underline; text-underline-offset: 3px; cursor: pointer;
 }
+.sheet.full { touch-action: pan-y; }
+.sheet.full .sheet-body { min-height: 100dvh; }

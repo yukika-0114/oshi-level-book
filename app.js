@@ -892,9 +892,15 @@ function dayBreakdown(u, d) {
   if (u.joined && key < u.joined) return [];
   const items = [];
   if (key <= tk) {
-    // 過去・今日：確認して「増えた」分と、追加予定で追加した分だけ
-    for (const lg of u.paceLog || []) {
-      if (lg.date === key) for (const it of lg.items) items.push({ label: it.label, amount: it.amount });
+    const registered = u.createdAt ? dayKey(new Date(u.createdAt)) : tk;
+    if (key <= registered) {
+      // アプリに登録した日まで（確認のしようがない期間）は増加ペースどおりに増えたものとして表示
+      items.push(...paceItems(u, d));
+    } else {
+      // 登録後：確認して「増えた」分だけ
+      for (const lg of u.paceLog || []) {
+        if (lg.date === key) for (const it of lg.items) items.push({ label: it.label, amount: it.amount });
+      }
     }
     for (const h of u.history || []) {
       if (h.kind === 'plan' && (h.date || String(h.planned || '').slice(0, 10)) === key) items.push({ label: '追加予定', amount: h.amount, plan: true });
@@ -913,8 +919,7 @@ function openCalendar(u) {
   let selected = null; // 選択中の日付
   u.notes = u.notes || {};
   openSheet(`
-    <div class="sheet-title"><h3>増加カレンダー</h3>
-      <button type="button" class="close-btn" data-sheet-close aria-label="閉じる">${CLOSE_ICON}</button></div>
+    <button type="button" class="back-head" data-sheet-close aria-label="戻る">${BACK_ICON}<span>カレンダー</span></button>
     <div class="cal-head">
       <label class="cal-jump"><b id="calTitle"></b><svg class="cal-caret" viewBox="0 0 24 24" width="16" height="16" fill="none" stroke="currentColor" stroke-width="2.4" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="m6 9 6 6 6-6"/></svg>
         <input type="date" id="calJump" aria-label="日付を選ぶ"></label>
@@ -995,8 +1000,12 @@ function openCalendar(u) {
     });
     // 横スライドで前後の月へ
     let sx = 0; let sy = 0; let tracking = false; let swiped = false;
-    body.addEventListener('pointerdown', (e) => { sx = e.clientX; sy = e.clientY; tracking = true; swiped = false; });
-    body.addEventListener('pointermove', (e) => {
+    const area = dlg; // カレンダーの下の空白をスライドしても切り替わるよう、画面全体で受け付ける
+    area.addEventListener('pointerdown', (e) => {
+      if (e.target.closest('textarea, input, .back-head')) return;
+      sx = e.clientX; sy = e.clientY; tracking = true; swiped = false;
+    });
+    area.addEventListener('pointermove', (e) => {
       if (!tracking) return;
       const dx = e.clientX - sx; const dy = e.clientY - sy;
       if (Math.abs(dx) > 50 && Math.abs(dx) > Math.abs(dy) * 1.5) {
@@ -1005,8 +1014,8 @@ function openCalendar(u) {
       }
     });
     const stop = () => { tracking = false; };
-    body.addEventListener('pointerup', stop);
-    body.addEventListener('pointercancel', stop);
+    area.addEventListener('pointerup', stop);
+    area.addEventListener('pointercancel', stop);
     grid.addEventListener('click', (e) => {
       if (swiped) { swiped = false; return; } // スライド直後のタップは無視
       const c = e.target.closest('[data-day]');
