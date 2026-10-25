@@ -978,6 +978,8 @@ function openCalendar(u) {
           selected && d.getTime() === selected.getTime() ? 'sel' : ''].join(' ');
         cells.push(`<button type="button" class="${cls}" data-day="${day}"><span class="cal-day">${day}</span><b>${sum ? `+${num(sum)}` : (u.pending || []).some((pd) => pd.date === dayKey(d)) ? '未確認' : ''}</b><i class="cal-memo-mark"></i></button>`);
       }
+      // どの月も 6 週分のマスにして、カレンダーの高さを一定にする（下の表示位置を固定）
+      while (cells.length < 42) cells.push('<span class="cal-cell empty"></span>');
       grid.innerHTML = cells.join('');
       dlg.querySelector('#calTotal').innerHTML = `${m + 1}月の増加 合計 <b>+${num(total)}pt</b>`;
       if (selected && selected.getFullYear() === y && selected.getMonth() === m) showDetail(selected);
