@@ -324,6 +324,106 @@ async function checkNotify({ force = false } = {}) {
   return ok;
 }
 
+/* ========== サーバー通知（Web Push / Supabase） ==========
+ * アプリを閉じていても指定時刻に届くよう、購読情報と通知スケジュールを
+ * Supabase Edge Function「subscribe」へ同期する。送信は「send-due」が毎分担当。
+ */
+const PUSH_CONFIG = {
+  url: 'https://liosppraieykeqpfznwj.supabase.co',
+  anonKey: 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Imxpb3NwcHJhaWV5a2VxcGZ6bndqIiwicm9sZSI6ImFub24iLCJpYXQiOjE3OTUxODMwMDUsImV4cCI6MjExMDc1OTAwNX0.vHIiQtGTXif303_D8PwHGwA2eYp1jUks16RIPChh4J4',
+  vapidPublicKey: 'BCTWNcKIphnVBXPFjK0-HA9qsOlrwrJk7UD5t0s7EVRFh3HwfL9za65XoiIduBJ-xEOwBH3cmRvg7NkWRDvdDuQ',
+};
+const pushConfigured = () => !PUSH_CONFIG.url.startsWith('__') && 'PushManager' in window && 'serviceWorker' in navigator;
+
+function urlBase64ToUint8Array(base64String) {
+  const padding = '='.repeat((4 - (base64String.length % 4)) % 4);
+  const base64 = (base64String + padding).replace(/-/g, '+').replace(/_/g, '/');
+  const raw = atob(base64);
+  return Uint8Array.from([...raw].map((c) => c.charCodeAt(0)));
+}
+
+/* これから90日で増加ペースが発生する日の一覧（サーバー側の送信日判定に使う） */
+function upcomingGainDates(days = 90) {
+  const out = [];
+  const d = startOfToday();
+  for (let i = 0; i < days; i++) {
+    if (data.users.some((u) => paceItems(u, d).length)) out.push(dayKey(d));
+    d.setDate(d.getDate() + 1);
+  }
+  return out;
+}
+
+async function getPushSubscription() {
+  if (!pushConfigured()) return null;
+  const reg = await navigator.serviceWorker.ready;
+  let sub = await reg.pushManager.getSubscription();
+  if (!sub) {
+    sub = await reg.pushManager.subscribe({
+      userVisibleOnly: true,
+      applicationServerKey: urlBase64ToUint8Array(PUSH_CONFIG.vapidPublicKey),
+    });
+  }
+  return sub;
+}
+
+let syncPushTimer = null;
+function syncPushSoon() {
+  clearTimeout(syncPushTimer);
+  syncPushTimer = setTimeout(() => syncPushSubscription(), 800);
+}
+
+/* 現在の設定・確認待ち・今後の増加予定日をサーバーへ同期する */
+async function syncPushSubscription() {
+  if (!pushConfigured() || notifyPermission() !== 'granted') return false;
+  try {
+    const sub = await getPushSubscription();
+    if (!sub) return false;
+    const j = sub.toJSON();
+    const res = await fetch(`${PUSH_CONFIG.url}/functions/v1/subscribe`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: PUSH_CONFIG.anonKey,
+        Authorization: `Bearer ${PUSH_CONFIG.anonKey}`,
+      },
+      body: JSON.stringify({
+        endpoint: j.endpoint,
+        p256dh: j.keys?.p256dh,
+        auth: j.keys?.auth,
+        notify_time: notifySettings.time,
+        timezone: Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Tokyo',
+        enabled: notifySettings.enabled,
+        has_pending: pendingCount() > 0,
+        notify_dates: upcomingGainDates(),
+        pending_summary: pendingCount() ? pendingNotifyBody() : null,
+      }),
+    });
+    return res.ok;
+  } catch { return false; }
+}
+
+/* サーバー経由のテスト送信（send-due のテストモード） */
+async function sendServerTestPush() {
+  if (!pushConfigured()) return false;
+  try {
+    const sub = await getPushSubscription();
+    if (!sub) return false;
+    await syncPushSubscription();
+    const res = await fetch(`${PUSH_CONFIG.url}/functions/v1/send-due`, {
+      method: 'POST',
+      headers: {
+        'Content-Type': 'application/json',
+        apikey: PUSH_CONFIG.anonKey,
+        Authorization: `Bearer ${PUSH_CONFIG.anonKey}`,
+      },
+      body: JSON.stringify({ test: true, endpoint: sub.endpoint }),
+    });
+    if (!res.ok) return false;
+    const out = await res.json().catch(() => null);
+    return !!(out?.results || []).find((r) => r.sent);
+  } catch { return false; }
+}
+
 let notifyTimer = null;
 function scheduleNotify() {
   clearTimeout(notifyTimer);
@@ -430,11 +530,11 @@ function openPendingSheet() {
       if (!b) return;
       const u = userById(b.dataset.uid);
       if (u) answerPending(u, b.dataset.pid, b.dataset.pans === '1');
-      save(); render(); refreshOpenDetail?.(); draw();
+      save(); render(); refreshOpenDetail?.(); draw(); syncPushSoon();
     });
     dlg.querySelector('#pendingAllYes').addEventListener('click', () => {
       for (const u of data.users) for (const pd of [...(u.pending || [])]) answerPending(u, pd.id, true);
-      save(); draw();
+      save(); draw(); syncPushSoon();
     });
     draw();
   });
@@ -653,8 +753,9 @@ function renderSettings() {
       <div class="row">
         ${supported && perm !== 'granted' ? '<button class="btn accent" id="notifyPermit">通知を許可する</button>' : ''}
         <button class="btn" id="notifyTest" ${notifySettings.enabled && perm === 'granted' ? '' : 'disabled'}>テスト通知を送る</button>
+        <button class="btn" id="notifyServerTest" ${notifySettings.enabled && perm === 'granted' ? '' : 'disabled'}>サーバー通知をテスト</button>
       </div>
-      <p class="muted small" style="margin-top:10px">アプリを開いているときは指定時刻に通知します。閉じていたときは、次に開いて指定時刻を過ぎていれば通知します。</p>
+      <p class="muted small" style="margin-top:10px">${pushConfigured() ? 'サーバーから通知するため、アプリを閉じていても指定時刻に届きます。' : 'アプリを開いているときは指定時刻に通知します。閉じていたときは、次に開いて指定時刻を過ぎていれば通知します。'}</p>
     </div>
     <div class="card"><h2>データ管理</h2>
       <p class="muted small">データはこの端末のブラウザ内に保存されます。機種変更や念のためのバックアップにはエクスポートをご利用ください。</p>
@@ -1701,12 +1802,17 @@ view.addEventListener('click', (e) => {
       break;
     case 'notifyPermit': {
       if (!notifySupported()) { toast('このブラウザでは通知に対応していません'); break; }
-      Notification.requestPermission().then(() => { render(); if (notifyPermission() === 'granted') { toast('通知を許可しました'); checkNotify(); } });
+      Notification.requestPermission().then(() => { render(); if (notifyPermission() === 'granted') { toast('通知を許可しました'); checkNotify(); syncPushSubscription(); } });
       break;
     }
     case 'notifyTest': {
       showNotification('増加の確認', pendingCount() ? pendingNotifyBody() : 'テスト通知です。通知は届いています。', `oshi-test-${Date.now()}`)
         .then((ok) => toast(ok ? 'テスト通知を送りました' : '通知を送れませんでした。許可を確認してください'));
+      break;
+    }
+    case 'notifyServerTest': {
+      toast('サーバーへ送信中…');
+      sendServerTestPush().then((ok) => toast(ok ? 'サーバーからテスト通知を送りました' : 'サーバー通知を送れませんでした'));
       break;
     }
     case 'exportJson': download(`tiktok-menleve-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); break;
@@ -1740,11 +1846,12 @@ view.addEventListener('change', (e) => {
     if (on) notifySettings.lastNotified = notifySettings.lastNotified || '';
     saveNotify(); scheduleNotify(); render();
     if (on && notifySupported() && notifyPermission() === 'default') {
-      Notification.requestPermission().then(() => { render(); if (notifyPermission() === 'granted') checkNotify(); });
-    } else if (on) { checkNotify(); }
+      Notification.requestPermission().then(() => { render(); if (notifyPermission() === 'granted') { checkNotify(); syncPushSubscription(); } });
+    } else if (on) { checkNotify(); syncPushSubscription(); }
+    else { syncPushSubscription(); }
   }
   if (t.id === 'notifyTime' && /^\d{2}:\d{2}$/.test(t.value)) {
-    notifySettings.time = t.value; notifySettings.lastNotified = ''; saveNotify(); scheduleNotify(); checkNotify();
+    notifySettings.time = t.value; notifySettings.lastNotified = ''; saveNotify(); scheduleNotify(); checkNotify(); syncPushSoon();
   }
 });
 
@@ -1805,6 +1912,7 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 accrueAll();
 render();
 scheduleNotify();
+if (notifySettings.enabled) syncPushSubscription();
 const fromNotification = new URLSearchParams(location.search).get('openPending') === '1';
 if (fromNotification) {
   notifySettings.lastNotified = todayKey(); saveNotify();
@@ -1824,6 +1932,7 @@ const accrueAndRefresh = () => {
   if (pendingCount() > beforePending && !document.querySelector('dialog[open]')) openPendingSheet();
   // バックグラウンドにいる間に指定時刻を迎えたら通知する（前面表示中はシート/バナーで分かるため通知しない）
   if (document.hidden) checkNotify();
+  syncPushSoon();
 };
 setInterval(accrueAndRefresh, 60 * 1000);
 setInterval(() => { if (document.hidden) checkNotify(); }, 60 * 1000);

@@ -1,4 +1,4 @@
-const CACHE = 'ttlv-v46';
+const CACHE = 'ttlv-v47';
 const ASSETS = [
   './',
   './index.html',
