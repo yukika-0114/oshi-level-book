@@ -26,8 +26,13 @@ if (typeof (Uint8Array.prototype as unknown as Record<string, unknown>).toBase64
   };
 }
 
+const cors = {
+  "Access-Control-Allow-Origin": "*",
+  "Access-Control-Allow-Headers": "authorization, apikey, content-type, x-client-info, x-cron-secret",
+  "Access-Control-Allow-Methods": "POST, OPTIONS",
+};
 const json = (body: unknown, status = 200) =>
-  new Response(JSON.stringify(body), { status, headers: { "Content-Type": "application/json" } });
+  new Response(JSON.stringify(body), { status, headers: { ...cors, "Content-Type": "application/json" } });
 
 function localNow(tz: string) {
   const now = new Date();
@@ -38,6 +43,7 @@ function localNow(tz: string) {
 }
 
 Deno.serve(async (req) => {
+  if (req.method === "OPTIONS") return new Response("ok", { headers: cors });
   let body: Record<string, unknown> = {};
   try { body = await req.json(); } catch { /* 空bodyは通常モード */ }
 
