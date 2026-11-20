@@ -6,6 +6,7 @@
  */
 const STORE_KEY = 'ttlv-data-v1';
 const UI_KEY = 'ttlv-ui-v1';
+const NOTIFY_KEY = 'ttlv-notify-v1';
 const MAX_LV = 50;
 const GOAL_LV = MAX_LV; // 目標は常に最大の Lv.50
 const COLOR = '#25f4ee';
@@ -29,6 +30,14 @@ const ui = Object.assign(
 );
 if (!['users', 'levels', 'table', 'settings'].includes(ui.tab)) ui.tab = 'users';
 const openGroups = new Set(ui.open || []);
+
+/* 通知設定：増加の確認を毎日決まった時刻に通知する */
+const DEFAULT_NOTIFY = { enabled: false, time: '21:00', lastNotified: '' };
+let notifySettings = Object.assign({}, DEFAULT_NOTIFY, loadJSON(NOTIFY_KEY) || {});
+if (!/^\d{2}:\d{2}$/.test(notifySettings.time || '')) notifySettings.time = DEFAULT_NOTIFY.time;
+function saveNotify() {
+  try { localStorage.setItem(NOTIFY_KEY, JSON.stringify(notifySettings)); } catch { /* 無視 */ }
+}
 
 function loadJSON(key) {
   try { return JSON.parse(localStorage.getItem(key)); } catch { return null; }
@@ -263,6 +272,69 @@ function paceItems(u, d) {
   return items;
 }
 const pendingCount = () => data.users.reduce((n, u) => n + (u.pending || []).length, 0);
+
+/* ========== 増加確認の通知 ==========
+ * サーバーを持たないPWAのため、プッシュ通知ではなく端末内通知を使う。
+ * アプリを開いている間は指定時刻に、閉じていた場合は次に開いたとき
+ * （指定時刻を過ぎていて未通知なら）通知する。1日1回まで。
+ */
+const notifySupported = () => 'Notification' in window;
+const notifyPermission = () => (notifySupported() ? Notification.permission : 'unsupported');
+
+async function showNotification(title, body, tag) {
+  if (!notifySupported() || Notification.permission !== 'granted') return false;
+  const options = {
+    body,
+    tag: tag || 'oshi-pending',
+    icon: 'icons/icon-192.png',
+    badge: 'icons/icon-192.png',
+    data: { url: './?openPending=1' },
+  };
+  try {
+    if ('serviceWorker' in navigator) {
+      const reg = await navigator.serviceWorker.ready;
+      if (reg?.showNotification) { await reg.showNotification(title, options); return true; }
+    }
+  } catch { /* SW経由で出せなければ下の方法で出す */ }
+  try { new Notification(title, options); return true; } catch { return false; }
+}
+
+function pendingNotifyBody() {
+  const names = data.users.filter((u) => (u.pending || []).length).map((u) => u.name);
+  const count = pendingCount();
+  return names.length
+    ? `${names.slice(0, 3).join('、')}${names.length > 3 ? ' ほか' : ''}：${count}件の増加の確認があります`
+    : `${count}件の増加の確認があります`;
+}
+
+/* 指定時刻を過ぎていて、まだ今日通知しておらず、確認待ちがあれば通知する */
+async function checkNotify({ force = false } = {}) {
+  if (!notifySettings.enabled || !pendingCount()) return false;
+  if (notifyPermission() !== 'granted') return false;
+  const now = new Date();
+  const today = dayKey(now);
+  if (!force) {
+    if (notifySettings.lastNotified === today) return false;
+    const [h, m] = notifySettings.time.split(':').map(Number);
+    const target = new Date(now); target.setHours(h || 0, m || 0, 0, 0);
+    if (now < target) return false;
+  }
+  const ok = await showNotification('増加の確認', pendingNotifyBody(), `oshi-pending-${today}`);
+  if (ok) { notifySettings.lastNotified = today; saveNotify(); }
+  return ok;
+}
+
+let notifyTimer = null;
+function scheduleNotify() {
+  clearTimeout(notifyTimer);
+  if (!notifySettings.enabled) return;
+  const now = new Date();
+  const [h, m] = notifySettings.time.split(':').map(Number);
+  const target = new Date(now); target.setHours(h || 0, m || 0, 0, 0);
+  if (target <= now) target.setDate(target.getDate() + 1);
+  // 指定時刻ちょうどにも確認できるようタイマーを張り、通常チェックは間隔チェックでも行う
+  notifyTimer = setTimeout(() => { checkNotify(); scheduleNotify(); }, Math.min(target - now + 500, 2147483647));
+}
 
 function accrueAll() {
   const today = startOfToday();
@@ -554,8 +626,36 @@ function renderTable() {
 }
 
 /* ========== 画面：設定 ========== */
+function notifyStatusText() {
+  if (!notifySupported()) return 'このブラウザでは通知に対応していません';
+  const p = notifyPermission();
+  if (p === 'granted') return '通知は許可されています';
+  if (p === 'denied') return '通知がブロックされています。ブラウザの設定から許可してください';
+  return '通知はまだ許可されていません';
+}
 function renderSettings() {
+  const supported = notifySupported();
+  const perm = notifyPermission();
   return `
+    <div class="card"><h2>通知</h2>
+      <div class="notify-row">
+        <span>増加の確認を通知する</span>
+        <div class="toggle-seg notify-toggle">
+          <label><input type="radio" name="notifyEnabled" value="0" ${notifySettings.enabled ? '' : 'checked'}><span>OFF</span></label>
+          <label><input type="radio" name="notifyEnabled" value="1" ${notifySettings.enabled ? 'checked' : ''}><span>ON</span></label>
+        </div>
+      </div>
+      <div class="field" style="margin-top:12px">
+        <label for="notifyTime">通知する時刻</label>
+        <input class="input" type="time" id="notifyTime" value="${esc(notifySettings.time)}" ${notifySettings.enabled ? '' : 'disabled'}>
+      </div>
+      <p class="muted small" id="notifyStatus">${esc(notifyStatusText())}${pendingCount() ? ` ・ 現在 ${pendingCount()}件の確認待ち` : ''}</p>
+      <div class="row">
+        ${supported && perm !== 'granted' ? '<button class="btn accent" id="notifyPermit">通知を許可する</button>' : ''}
+        <button class="btn" id="notifyTest" ${notifySettings.enabled && perm === 'granted' ? '' : 'disabled'}>テスト通知を送る</button>
+      </div>
+      <p class="muted small" style="margin-top:10px">アプリを開いているときは指定時刻に通知します。閉じていたときは、次に開いて指定時刻を過ぎていれば通知します。</p>
+    </div>
     <div class="card"><h2>データ管理</h2>
       <p class="muted small">データはこの端末のブラウザ内に保存されます。機種変更や念のためのバックアップにはエクスポートをご利用ください。</p>
       <div class="row">
@@ -1599,6 +1699,16 @@ view.addEventListener('click', (e) => {
     case 'expandAll': case 'collapseAll':
       view.querySelectorAll('.lv-group').forEach((d) => { d.open = t.id === 'expandAll'; });
       break;
+    case 'notifyPermit': {
+      if (!notifySupported()) { toast('このブラウザでは通知に対応していません'); break; }
+      Notification.requestPermission().then(() => { render(); if (notifyPermission() === 'granted') { toast('通知を許可しました'); checkNotify(); } });
+      break;
+    }
+    case 'notifyTest': {
+      showNotification('増加の確認', pendingCount() ? pendingNotifyBody() : 'テスト通知です。通知は届いています。', `oshi-test-${Date.now()}`)
+        .then((ok) => toast(ok ? 'テスト通知を送りました' : '通知を送れませんでした。許可を確認してください'));
+      break;
+    }
     case 'exportJson': download(`tiktok-menleve-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); break;
     case 'exportCsv': exportCsv(); break;
     case 'importJson': $('#importFile').click(); break;
@@ -1616,11 +1726,26 @@ view.addEventListener('toggle', (e) => {
 }, true);
 view.addEventListener('input', (e) => {
   if (e.target.id === 'search') { ui.search = e.target.value; refreshUserList(); saveUI(); }
+  if (e.target.id === 'notifyTime' && /^\d{2}:\d{2}$/.test(e.target.value)) {
+    if (notifySettings.time !== e.target.value) { notifySettings.time = e.target.value; notifySettings.lastNotified = ''; saveNotify(); scheduleNotify(); }
+  }
 });
 view.addEventListener('change', (e) => {
   const t = e.target;
   if (t.id === 'sort') { ui.sort = t.value; refreshUserList(); saveUI(); }
   if (t.id === 'importFile' && t.files[0]) { importJson(t.files[0]); t.value = ''; }
+  if (t.name === 'notifyEnabled') {
+    const on = t.value === '1';
+    notifySettings.enabled = on;
+    if (on) notifySettings.lastNotified = notifySettings.lastNotified || '';
+    saveNotify(); scheduleNotify(); render();
+    if (on && notifySupported() && notifyPermission() === 'default') {
+      Notification.requestPermission().then(() => { render(); if (notifyPermission() === 'granted') checkNotify(); });
+    } else if (on) { checkNotify(); }
+  }
+  if (t.id === 'notifyTime' && /^\d{2}:\d{2}$/.test(t.value)) {
+    notifySettings.time = t.value; notifySettings.lastNotified = ''; saveNotify(); scheduleNotify(); checkNotify();
+  }
 });
 
 /* ========== 増減ボタンの長押しで連続増減 ========== */
@@ -1679,12 +1804,27 @@ if (navigator.storage?.persist) navigator.storage.persist().catch(() => {});
 
 accrueAll();
 render();
+scheduleNotify();
+const fromNotification = new URLSearchParams(location.search).get('openPending') === '1';
+if (fromNotification) {
+  notifySettings.lastNotified = todayKey(); saveNotify();
+  history.replaceState(null, '', location.pathname);
+}
 if (pendingCount()) setTimeout(openPendingSheet, 400);
+// 通知クリックで開かれた場合も含め、Service Workerからのメッセージで確認シートを開く
+if ('serviceWorker' in navigator) {
+  navigator.serviceWorker.addEventListener('message', (e) => {
+    if (e.data?.type === 'OPEN_PENDING' && pendingCount()) openPendingSheet();
+  });
+}
 // アプリを開いたまま日付が変わった場合や、バックグラウンドから戻ったときにも反映する
 const accrueAndRefresh = () => {
   const beforePending = pendingCount();
   if (accrueAll()) { render(); refreshOpenDetail?.(); }
   if (pendingCount() > beforePending && !document.querySelector('dialog[open]')) openPendingSheet();
+  // バックグラウンドにいる間に指定時刻を迎えたら通知する（前面表示中はシート/バナーで分かるため通知しない）
+  if (document.hidden) checkNotify();
 };
 setInterval(accrueAndRefresh, 60 * 1000);
+setInterval(() => { if (document.hidden) checkNotify(); }, 60 * 1000);
 document.addEventListener('visibilitychange', () => { if (!document.hidden) accrueAndRefresh(); });
