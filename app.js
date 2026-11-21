@@ -7,6 +7,8 @@
 const STORE_KEY = 'ttlv-data-v1';
 const UI_KEY = 'ttlv-ui-v1';
 const NOTIFY_KEY = 'ttlv-notify-v1';
+const BACKUP_TS_KEY = 'ttlv-backup-ts-v1';
+const BACKUP_UPLOADED_KEY = 'ttlv-backup-uploaded-v1';
 const MAX_LV = 50;
 const GOAL_LV = MAX_LV; // 目標は常に最大の Lv.50
 const COLOR = '#25f4ee';
@@ -67,7 +69,9 @@ function load() {
 }
 function save() {
   try { localStorage.setItem(STORE_KEY, JSON.stringify(data)); }
-  catch { toast('保存に失敗しました（容量不足の可能性）'); }
+  catch { toast('保存に失敗しました（容量不足の可能性）'); return; }
+  try { localStorage.setItem(BACKUP_TS_KEY, String(Date.now())); } catch { /* 無視 */ }
+  backupSoon();
 }
 function saveUI() {
   ui.open = [...openGroups];
@@ -424,6 +428,57 @@ async function sendServerTestPush() {
   } catch { return false; }
 }
 
+/* ========== データのサーバーバックアップ ==========
+ * データを保存するたびに Supabase へ自動バックアップする。
+ * 端末にデータが無い状態で起動したら、サーバーのバックアップから自動復元する。
+ * サーバー側に新しいデータがある場合は上書きしない（client_ts で判定）。
+ */
+const localBackupTs = () => Number(loadJSON(BACKUP_TS_KEY)) || 0;
+let backupTimer = null;
+function backupSoon() {
+  clearTimeout(backupTimer);
+  backupTimer = setTimeout(() => { backupToServer(); }, 3000);
+}
+async function backupApi(body) {
+  const res = await fetch(`${PUSH_CONFIG.url}/functions/v1/backup`, {
+    method: 'POST',
+    headers: {
+      'Content-Type': 'application/json',
+      apikey: PUSH_CONFIG.anonKey,
+      Authorization: `Bearer ${PUSH_CONFIG.anonKey}`,
+    },
+    body: JSON.stringify(body),
+  });
+  if (!res.ok) return null;
+  return res.json().catch(() => null);
+}
+async function backupToServer() {
+  if (!pushConfigured()) return false;
+  const ts = localBackupTs();
+  if (!ts || (Number(loadJSON(BACKUP_UPLOADED_KEY)) || 0) === ts) return false;
+  try {
+    const out = await backupApi({ action: 'save', data, client_ts: ts });
+    if (!out?.ok || !out.saved) return false;
+    try { localStorage.setItem(BACKUP_UPLOADED_KEY, String(ts)); } catch { /* 無視 */ }
+    return true;
+  } catch { return false; }
+}
+async function restoreFromServer(manual) {
+  if (!pushConfigured()) { if (manual) toast('サーバーに接続できません'); return false; }
+  let out = null;
+  try { out = await backupApi({ action: 'load' }); } catch { /* 無視 */ }
+  if (!out?.ok || !out.data) { if (manual) toast('サーバーにバックアップがありません'); return false; }
+  // 自動復元は、サーバーの方が新しいときだけ（全削除した直後の復活を防ぐ）
+  if (!manual && (Number(out.client_ts) || 0) <= localBackupTs()) return false;
+  const restored = normalize(JSON.parse(JSON.stringify(out.data)));
+  if (!restored) { if (manual) toast('バックアップを読み込めませんでした'); return false; }
+  data = restored;
+  save();
+  render();
+  toast('サーバーのバックアップから復元しました');
+  return true;
+}
+
 let notifyTimer = null;
 function scheduleNotify() {
   clearTimeout(notifyTimer);
@@ -758,11 +813,12 @@ function renderSettings() {
       <p class="muted small" style="margin-top:10px">${pushConfigured() ? 'サーバーから通知するため、アプリを閉じていても指定時刻に届きます。' : 'アプリを開いているときは指定時刻に通知します。閉じていたときは、次に開いて指定時刻を過ぎていれば通知します。'}</p>
     </div>
     <div class="card"><h2>データ管理</h2>
-      <p class="muted small">データはこの端末のブラウザ内に保存されます。機種変更や念のためのバックアップにはエクスポートをご利用ください。</p>
+      <p class="muted small">データはこの端末のブラウザ内に保存され、サーバーにも自動でバックアップされます。機種変更や念のためのバックアップにはエクスポートをご利用ください。</p>
       <div class="row">
         <button class="btn" id="exportJson">JSONで保存</button>
         <button class="btn" id="importJson">JSONを読み込み</button>
         <button class="btn" id="exportCsv">CSVで保存</button>
+        <button class="btn" id="restoreBackup">サーバーから復元</button>
       </div>
       <input type="file" id="importFile" accept="application/json,.json" hidden>
       <button class="btn danger block" id="resetAll" style="margin-top:10px">すべてのデータを削除</button>
@@ -1815,6 +1871,11 @@ view.addEventListener('click', (e) => {
       sendServerTestPush().then((ok) => toast(ok ? 'サーバーからテスト通知を送りました' : 'サーバー通知を送れませんでした'));
       break;
     }
+    case 'restoreBackup': {
+      askConfirm({ title: 'サーバーのバックアップから復元しますか？', message: '現在のデータは、サーバーに保存されたバックアップで上書きされます。', ok: '復元する', danger: true })
+        .then(async (ok) => { if (ok) await restoreFromServer(true); });
+      break;
+    }
     case 'exportJson': download(`tiktok-menleve-${stamp()}.json`, JSON.stringify(data, null, 2), 'application/json'); break;
     case 'exportCsv': exportCsv(); break;
     case 'importJson': $('#importFile').click(); break;
@@ -1913,6 +1974,11 @@ accrueAll();
 render();
 scheduleNotify();
 if (notifySettings.enabled) syncPushSubscription();
+// 端末にデータが無い場合はサーバーのバックアップから自動復元し、ある場合は最新をバックアップする
+(async () => {
+  if (!data.users.length) await restoreFromServer(false);
+  else backupToServer();
+})();
 const fromNotification = new URLSearchParams(location.search).get('openPending') === '1';
 if (fromNotification) {
   notifySettings.lastNotified = todayKey(); saveNotify();
