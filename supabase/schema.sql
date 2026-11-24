@@ -7,6 +7,7 @@ create table if not exists public.push_subscriptions (
   timezone text not null default 'Asia/Tokyo',
   enabled boolean not null default true,
   has_pending boolean not null default false,
+  handled_date date,
   notify_dates date[] not null default '{}',
   pending_summary text,
   last_sent_date date,

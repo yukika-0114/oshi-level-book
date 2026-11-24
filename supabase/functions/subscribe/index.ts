@@ -42,6 +42,7 @@ Deno.serve(async (req) => {
     timezone: String(body.timezone || "Asia/Tokyo"),
     enabled: body.enabled !== false,
     has_pending: body.has_pending === true,
+    handled_date: /^\d{4}-\d{2}-\d{2}$/.test(String(body.handled_date || "")) ? String(body.handled_date) : null,
     notify_dates: Array.isArray(body.notify_dates) ? body.notify_dates.map(String).filter((d) => /^\d{4}-\d{2}-\d{2}$/.test(d)) : [],
     pending_summary: body.pending_summary ? String(body.pending_summary).slice(0, 200) : null,
     updated_at: new Date().toISOString(),

@@ -400,6 +400,8 @@ async function syncPushSubscription() {
         has_pending: pendingCount() > 0,
         notify_dates: upcomingGainDates(),
         pending_summary: pendingCount() ? pendingNotifyBody() : null,
+        // 今日分を確認済み（未確認ゼロ）なら、その日付を送ってサーバー通知を止める
+        handled_date: pendingCount() === 0 ? dayKey(new Date()) : null,
       }),
     });
     return res.ok;

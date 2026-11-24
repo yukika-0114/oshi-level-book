@@ -72,7 +72,8 @@ Deno.serve(async (req) => {
   for (const s of subs || []) {
     const { hm, ymd } = localNow(s.timezone || "Asia/Tokyo");
     if (!isTest) {
-      const dueDay = s.has_pending || (Array.isArray(s.notify_dates) && s.notify_dates.includes(ymd));
+      // 今日分を確認済み（handled_date が今日）のときは鳴らさない
+      const dueDay = s.handled_date !== ymd && (s.has_pending || (Array.isArray(s.notify_dates) && s.notify_dates.includes(ymd)));
       if (s.notify_time !== hm || !dueDay || s.last_sent_date === ymd) continue;
     }
     const payload = JSON.stringify(isTest
