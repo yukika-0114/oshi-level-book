@@ -523,6 +523,8 @@ input[type=date].input::-webkit-date-and-time-value { text-align: left; }
 /* 詳細モーダル：画面の約 78% の高さで固定し、ページの中身だけをスクロール */
 .modal:has(#modalForm.detail) { height: 78dvh; overflow: hidden; }
 #modalForm.detail { display: flex; flex-direction: column; height: 100%; box-sizing: border-box; }
+/* 詳細の下の「閉じる」を画面の下寄せに（フォーム既定の下余白だと浮いて見えるため） */
+#modalForm.detail { padding-bottom: calc(8px + env(safe-area-inset-bottom, 0px) / 2); }
 #modalForm.detail .lv-hero, #modalForm.detail .page-dots, #modalForm.detail > .row { flex: none; }
 #modalForm.detail .slider { flex: 1; min-height: 0; margin-bottom: 12px; }
 #modalForm.detail .slides { height: 100%; align-items: stretch; }
