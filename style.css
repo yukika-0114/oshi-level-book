@@ -10,8 +10,8 @@
   --radius: 14px;
   --safe-b: env(safe-area-inset-bottom, 0px);
   /* ホームバーの余白をそのまま足すと下のタブが高くなりすぎるので、少し重ねて詰める */
-  --tab-pad-b: max(calc(env(safe-area-inset-bottom, 0px) - 16px), 6px);
-  --tab-h: calc(42px + var(--tab-pad-b));
+  --tab-pad-b: max(calc(env(safe-area-inset-bottom, 0px) - 18px), 8px);
+  --tab-h: calc(48px + var(--tab-pad-b));
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--text); }
@@ -49,7 +49,7 @@ input, select, textarea { font-size: 16px; }
   padding-bottom: var(--tab-pad-b);
 }
 .tabbar button {
-  position: relative; background: none; border: 0; height: 42px; padding: 0; color: var(--muted);
+  position: relative; background: none; border: 0; height: 48px; padding: 0; color: var(--muted);
   font-size: 13px; font-weight: 600; cursor: pointer;
 }
 .tabbar button.active { color: var(--text); }
@@ -94,7 +94,7 @@ input, select, textarea { font-size: 16px; }
 .toolbar #search { flex: 1 1 0; min-width: 0; }
 .sort-select { flex: 0 1 auto; width: auto; max-width: 46%; text-overflow: ellipsis; }
 .input, select.input, textarea.input {
-  width: 100%; padding: 10px 12px; border-radius: 10px;
+  width: 100%; padding: 12px; border-radius: 10px;
   background: var(--surface2); border: 1px solid var(--border); outline: none;
 }
 .input:focus { border-color: var(--cyan); }
@@ -102,7 +102,7 @@ textarea.input { min-height: 72px; resize: vertical; }
 
 .chips { display: flex; gap: 6px; overflow-x: auto; padding-bottom: 4px; margin-bottom: 12px; scrollbar-width: none; }
 .chip {
-  flex: none; padding: 6px 12px; border-radius: 999px; border: 1px solid var(--border);
+  flex: none; display: inline-flex; align-items: center; min-height: 36px; padding: 6px 14px; border-radius: 999px; border: 1px solid var(--border);
   background: var(--surface); color: var(--muted); cursor: pointer; font-size: 13px;
 }
 .chip.active { color: #000; background: var(--cyan); border-color: var(--cyan); font-weight: 700; }
@@ -144,15 +144,16 @@ textarea.input { min-height: 72px; resize: vertical; }
 
 .mini-step { display: flex; align-items: center; gap: 4px; }
 .mini-step button {
-  width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border);
+  width: 36px; height: 36px; border-radius: 8px; border: 1px solid var(--border);
   background: var(--surface); cursor: pointer; font-weight: 700;
 }
 
 .btn {
-  padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border);
+  display: inline-flex; align-items: center; justify-content: center;
+  min-height: 44px; padding: 10px 16px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--surface2); cursor: pointer; font-weight: 600;
 }
-.btn.small { padding: 6px 12px; font-size: 13px; }
+.btn.small { min-height: 36px; padding: 6px 12px; font-size: 13px; }
 .btn.accent { background: var(--cyan); color: #000; border-color: var(--cyan); }
 .btn.primary { background: var(--pink); color: #fff; border-color: var(--pink); }
 .btn.danger { background: transparent; color: var(--pink); border-color: var(--pink); }
@@ -225,7 +226,7 @@ a.btn { text-decoration: none; color: var(--text); }
 .kv dd { margin: 0; text-align: right; font-size: 16px; }
 .kv-step { display: inline-flex; align-items: center; gap: 10px; }
 .kv-step button {
-  width: 36px; height: 36px; border-radius: 10px; border: 1px solid var(--border);
+  width: 40px; height: 40px; border-radius: 10px; border: 1px solid var(--border);
   background: var(--surface2); font-size: 18px; cursor: pointer;
 }
 .kv-step span { min-width: 76px; text-align: center; }
@@ -356,7 +357,7 @@ input[type=number]::-webkit-outer-spin-button { -webkit-appearance: none; margin
 .plan-main { font-size: 14px; }
 .plan-main b { color: var(--cyan); }
 .plan-sub b { color: var(--text); }
-.plan-del { display: grid; place-items: center; width: 30px; height: 30px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--pink); cursor: pointer; }
+.plan-del { display: grid; place-items: center; width: 34px; height: 34px; border-radius: 8px; border: 1px solid var(--border); background: var(--surface2); color: var(--pink); cursor: pointer; }
 .plan-del svg { width: 16px; height: 16px; }
 
 /* 追加予定ページの達成予定 */
@@ -620,7 +621,7 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .pending-item:last-child { border-bottom: 0; }
 .pending-info { display: grid; gap: 2px; flex: 1; min-width: 0; font-size: 14px; }
 .pending-actions { display: flex; gap: 6px; flex: none; }
-.pending-actions .btn { padding: 6px 10px; }
+.pending-actions .btn { min-height: 38px; padding: 6px 10px; }
 
 /* 全画面の「＜ 履歴」 */
 .back-head {
@@ -631,7 +632,7 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 
 /* 増加の確認：回答ボタン（各行）とまとめボタンを区別 */
 .ans-btn {
-  padding: 6px 12px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer; background: none;
+  min-height: 38px; padding: 8px 14px; border-radius: 999px; font-size: 13px; font-weight: 700; cursor: pointer; background: none;
 }
 .ans-btn.no { border: 1px solid var(--border); color: var(--muted); }
 .ans-btn.yes { border: 1.5px solid var(--cyan); color: var(--cyan); }
@@ -664,3 +665,45 @@ input[type=time].input::-webkit-date-and-time-value { text-align: left; }
 .cal-legend .pace { color: var(--cyan); }
 .cal-legend .plan { color: #ff8aa1; }
 .cal-legend .wait { color: #ffd34d; }
+
+/* ===== スマホ向けの磨き込み（雰囲気はそのまま、押しやすさと反応だけ改善） ===== */
+/* ダブルタップズームやタップ遅延をなくす */
+button, summary, .user, .chip, .fab, .cal-cell, .toggle-seg span { touch-action: manipulation; }
+
+/* 押した感触：ほんの少し沈む */
+.btn, .chip, .fab, .icon-btn, .ans-btn, .kv-step button, .mini-step button, .stepper button, .wd button {
+  transition: transform .08s ease, background-color .15s ease, border-color .15s ease;
+}
+.btn:active, .chip:active, .icon-btn:active, .ans-btn:active,
+.kv-step button:active, .mini-step button:active, .stepper button:active { transform: scale(.96); }
+.fab:active { transform: scale(.93); }
+.tabbar button:active { color: var(--text); }
+.user { transition: background-color .15s ease; }
+.user:active { transform: none; }
+
+/* キーボード操作時のフォーカス表示（タップでは出ない） */
+:focus-visible { outline: 2px solid var(--cyan); outline-offset: 2px; }
+.input:focus-visible { outline: none; }
+
+/* 横向き・ノッチのある端末で左右が切れないように */
+.topbar {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+.view {
+  padding-left: max(16px, env(safe-area-inset-left, 0px));
+  padding-right: max(16px, env(safe-area-inset-right, 0px));
+}
+
+/* 小さい画面（〜380px）では統計や情報ブロックを少し詰める */
+@media (max-width: 380px) {
+  .stats .stat .value { font-size: 19px; }
+  .info-blocks { gap: 6px; }
+  .info-block .value { font-size: 15px; }
+  .lv-hero-title { font-size: 25px; }
+}
+
+/* 動きを減らす設定の端末ではアニメーションを止める */
+@media (prefers-reduced-motion: reduce) {
+  *, *::before, *::after { transition: none !important; animation: none !important; }
+}
