@@ -57,6 +57,7 @@ function normalize(d) {
     if (!Array.isArray(u.levelLog)) u.levelLog = [];
     if (!u.notes || typeof u.notes !== 'object') u.notes = {};
     if (!Array.isArray(u.pending)) u.pending = [];
+    u.pacePaused = !!u.pacePaused;
     if (!Array.isArray(u.paceLog)) u.paceLog = [];
     if (!Array.isArray(u.paceSkipped)) u.paceSkipped = [];
   });
@@ -233,7 +234,7 @@ function fmtAfter(to) {
 function etaHTML(u, need, date) {
   if (curPoints(u) >= need) return '<span class="up">ポイント到達済み</span>';
   if (!hasGrowth(u)) return '<span class="muted">増加ペース未設定</span>';
-  if (!date) return `<span class="muted">${hasGains(u) ? '100年以上先' : '追加予定だけでは届きません'}</span>`;
+  if (!date) return `<span class="muted">${u.pacePaused && hasGains(u) ? '増加ペースお休み中' : hasGains(u) ? '100年以上先' : '追加予定だけでは届きません'}</span>`;
   return `<span>達成予定 <b>${fmtYMD(date)}</b></span><span class="eta-after">${fmtAfter(date)}</span>`;
 }
 
@@ -255,7 +256,8 @@ function ruleActive(u, r, d) {
   if (r.superfan && u.superfanSince && key < u.superfanSince) return false;
   return true;
 }
-const gainOn = (u, d) => (u.gains || []).reduce((sum, r) => sum + (ruleActive(u, r, d) ? r.amount : 0), 0);
+// お休み中（pacePaused）は将来の増加ペースを数えない（過去の表示には影響させない）
+const gainOn = (u, d) => (u.pacePaused ? 0 : (u.gains || []).reduce((sum, r) => sum + (ruleActive(u, r, d) ? r.amount : 0), 0));
 
 // 追加されたポイントの履歴（新しい順・最大 300 件）
 const HISTORY_LIMIT = 300;
@@ -276,6 +278,16 @@ function paceItems(u, d) {
   return items;
 }
 const pendingCount = () => data.users.reduce((n, u) => n + (u.pending || []).length, 0);
+
+/* アプリアイコンのバッジに確認待ち件数を出す（対応環境のみ） */
+function updateBadge() {
+  if (!('setAppIconBadge' in navigator)) return;
+  const n = pendingCount();
+  try {
+    if (n > 0) navigator.setAppIconBadge(n);
+    else navigator.clearAppIconBadge();
+  } catch { /* 未対応・未許可の環境では何もしない */ }
+}
 
 /* ========== 増加確認の通知 ==========
  * サーバーを持たないPWAのため、プッシュ通知ではなく端末内通知を使う。
@@ -351,7 +363,7 @@ function upcomingGainDates(days = 90) {
   const out = [];
   const d = startOfToday();
   for (let i = 0; i < days; i++) {
-    if (data.users.some((u) => paceItems(u, d).length)) out.push(dayKey(d));
+    if (data.users.some((u) => !u.pacePaused && paceItems(u, d).length)) out.push(dayKey(d));
     d.setDate(d.getDate() + 1);
   }
   return out;
@@ -506,7 +518,8 @@ function accrueAll() {
     const from = parseDayKey(u.accruedAt);
     changed = true;
     // 増加ペース（前回確認した日の翌日〜今日）は、実際に増えたかを確認してから反映する
-    if (from && u.accruedAt !== tk && hasGains(u)) {
+    // お休み中は確認待ちを作らない（accruedAt は進むので、再開してもお休み期間分は遡って出てこない）
+    if (from && u.accruedAt !== tk && hasGains(u) && !u.pacePaused) {
       u.pending = u.pending || [];
       const d = new Date(from);
       for (let i = 0; i < PREDICT_DAYS && d < today; i++) {
@@ -655,7 +668,7 @@ function pointsHTML(u) {
     const date = predict(u, [goal]).get(goal);
     eta = date
       ? `<span class="eta">達成予定 ${fmtYMD(date)}（${fmtAfter(date)}）</span>`
-      : `<span class="eta muted">達成予定：${hasGains(u) ? '100年以上先' : '追加予定だけでは届きません'}</span>`;
+      : `<span class="eta muted">達成予定：${u.pacePaused && hasGains(u) ? '増加ペースお休み中' : hasGains(u) ? '100年以上先' : '追加予定だけでは届きません'}</span>`;
   }
   return `<div class="pts"><span>${hasPoints(u) ? num(u.points) : '-'} / ${num(goal)}pt</span>
     <span>Lv.50まで <b>${approx}${num(toGoal(u))}pt</b></span>${eta}</div>`;
@@ -837,6 +850,7 @@ const TITLES = { users: '推し', levels: 'レベル別', table: 'レベル表',
 const RENDER = { users: renderUsers, levels: renderLevels, table: renderTable, settings: renderSettings };
 
 function render() {
+  updateBadge();
   $('#pageTitle').textContent = TITLES[ui.tab];
   document.querySelectorAll('.tabbar button').forEach((b) => b.classList.toggle('active', b.dataset.tab === ui.tab));
   $('#fab').hidden = ui.tab === 'settings' || ui.tab === 'table';
@@ -1134,7 +1148,8 @@ function joinedInfoHTML(u) {
     + block('経過日数', days == null ? '-' : `${num(days)}<small>日</small>`, days == null ? 'off' : '')
     + block('スパファン', u.superfan
       ? (monthsSince(u.superfanSince) == null ? '加入中' : `${num(monthsSince(u.superfanSince))}<small>か月</small>`)
-      : '未加入', u.superfan ? 'on' : 'off');
+      : '未加入', u.superfan ? 'on' : 'off')
+    + (u.pacePaused ? block('増加ペース', 'お休み中', 'off') : '');
 }
 
 function levelLogHTML(u) {
@@ -1167,8 +1182,8 @@ function dayBreakdown(u, d) {
     for (const h of u.history || []) {
       if (h.kind === 'plan' && (h.date || String(h.planned || '').slice(0, 10)) === key) items.push({ label: '追加予定', amount: h.amount, plan: true });
     }
-  } else {
-    items.push(...paceItems(u, d)); // 明日以降は増加ペースの予定
+  } else if (!u.pacePaused) {
+    items.push(...paceItems(u, d)); // 明日以降は増加ペースの予定（お休み中は出さない）
   }
   for (const pl of u.plans || []) {
     if (pl.amount > 0 && pl.date === key) items.push({ label: `追加予定${pl.time ? `（${pl.time}）` : ''}`, amount: pl.amount, plan: true });
@@ -1424,6 +1439,11 @@ function paceFieldsHTML(u) {
   const mday = monthly?.day || new Date().getDate();
   const amount = (name, r) => `<input class="input" name="${name}" type="number" inputmode="numeric" min="0" value="${r?.amount || ''}" placeholder="0"><span class="muted small">pt</span>`;
   return `
+    <div class="pace-row"><span class="pace-title">ペース</span>
+      <div class="toggle-seg">
+        <label><input type="radio" name="pacePaused" value="0" ${u?.pacePaused ? '' : 'checked'}><span>通常</span></label>
+        <label><input type="radio" name="pacePaused" value="1" ${u?.pacePaused ? 'checked' : ''}><span>お休み</span></label>
+      </div></div>
     <div class="pace-row"><span class="pace-title">毎日</span><div class="gain-row">${amount('gDaily', daily)}</div></div>
     <div class="pace-row top"><span class="pace-title">毎週</span>
       <div class="pace-stack">
@@ -1601,6 +1621,7 @@ function openEditModal(u) {
     t.superfan = modalForm.querySelector('input[name="superfan"]:checked')?.value === '1';
     t.superfanSince = t.superfan ? (modalForm.elements.superfanSince.value || todayKey()) : '';
     t.gains = readPace(modalForm);
+    t.pacePaused = modalForm.querySelector('input[name="pacePaused"]:checked')?.value === '1';
     t.updatedAt = now;
     if (adding) data.users.push(t);
     // メンレベはポイントから自動で決まる。入力値は今日の分まで含むとみなし、明日から自動加算（新規登録時はレベル記録しない）
